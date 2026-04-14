@@ -127,15 +127,22 @@ app.post('/api/register', async (req, res) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, credits, bio, created_at FROM users WHERE id = ?').get(req.userId);
+  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, credits, bio, avatar_url, created_at FROM users WHERE id = ?').get(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const pets = db.prepare('SELECT * FROM pets WHERE owner_id = ?').all(req.userId);
   res.json({ ...user, pets });
 });
 
+app.post('/api/avatar', requireAuth, upload.single('avatar'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No image provided' });
+  const avatarUrl = `/uploads/${req.file.filename}`;
+  db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(avatarUrl, req.userId);
+  res.json({ ok: true, avatar_url: avatarUrl });
+});
+
 // Users
 app.get('/api/users/:id', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, name, building, unit, credits, bio, created_at FROM users WHERE id = ?').get(req.params.id);
+  const user = db.prepare('SELECT id, name, building, unit, credits, bio, avatar_url, created_at FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
   const pets = db.prepare('SELECT * FROM pets WHERE owner_id = ?').all(req.params.id);
   const reviews = db.prepare(`
@@ -473,7 +480,7 @@ app.get('/api/activity', requireAuth, (req, res) => {
 app.get('/api/neighbors', requireAuth, (req, res) => {
   const me = db.prepare('SELECT building, lat, lng FROM users WHERE id = ?').get(req.userId);
   const all = db.prepare(`
-    SELECT u.id, u.name, u.building, u.lat, u.lng, u.bio,
+    SELECT u.id, u.name, u.building, u.lat, u.lng, u.bio, u.avatar_url,
       GROUP_CONCAT(p.name || ' (' || p.type || ')') as pets_summary
     FROM users u
     LEFT JOIN pets p ON p.owner_id = u.id
@@ -605,7 +612,7 @@ app.get('/api/upcoming', requireAuth, (req, res) => {
 
 // ── Settings ───────────────────────────────────────────────────────────────
 app.get('/api/settings', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, bio, notif_messages, notif_accepted, notif_reminders, notif_browser, ec_name, ec_phone, ec_relation FROM users WHERE id = ?').get(req.userId);
+  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, bio, avatar_url, notif_messages, notif_accepted, notif_reminders, notif_browser, ec_name, ec_phone, ec_relation FROM users WHERE id = ?').get(req.userId);
   res.json(user);
 });
 

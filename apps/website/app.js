@@ -6,6 +6,12 @@ let browseDateFilter = 'all';
 let browseLocationFilter = 'building'; // 'building' or a miles string like '0.5'
 let myRequestsTab = 'posted';
 
+// ── Avatar helper ──────────────────────────────────────────────────────────
+function avatarHtml(name, avatarUrl, cls = 'neighbor-avatar') {
+  if (avatarUrl) return `<img src="${(window.API_BASE||'')}${avatarUrl}" class="${cls} ${cls}-img" alt="${name}" />`;
+  return `<div class="${cls}">${name ? name[0].toUpperCase() : '?'}</div>`;
+}
+
 // ── API helper ─────────────────────────────────────────────────────────────
 async function api(method, path, body) {
   const headers = body ? { 'Content-Type': 'application/json' } : {};
@@ -321,7 +327,9 @@ async function loadProfile() {
 
     // Profile card
     document.getElementById('profile-card').innerHTML = `
-      <div class="profile-avatar">${me.name[0].toUpperCase()}</div>
+      <div class="profile-avatar-wrap">
+        ${avatarHtml(me.name, me.avatar_url, 'profile-avatar')}
+      </div>
       <div class="profile-info">
         <h2>${me.name}</h2>
         <p>${me.unit ? 'Unit ' + me.unit + ' · ' : ''}${me.building_name || me.building}</p>
@@ -461,19 +469,23 @@ async function loadNeighbors() {
       grid.innerHTML = '<div class="empty"><p>No other neighbors have joined yet. Spread the word!</p></div>';
       return;
     }
-    grid.innerHTML = neighbors.map(n => `
-      <div class="neighbor-card">
-        <div class="neighbor-header" onclick="navigate('user-profile','${n.id}')" style="cursor:pointer">
-          <div class="neighbor-avatar">${n.name[0].toUpperCase()}</div>
-          <div>
-            <div class="neighbor-name">${n.name}</div>
-            <div class="neighbor-unit">${n.sameBuilding ? 'In your building' : 'Nearby'}</div>
+    grid.innerHTML = neighbors.map(n => {
+      const firstName = n.name.split(' ')[0];
+      const locationLabel = n.sameBuilding ? 'In your building' : (n.distanceMiles != null ? `${n.distanceMiles.toFixed(1)} mi away` : 'Nearby');
+      return `
+        <div class="neighbor-card">
+          <div class="neighbor-header" onclick="navigate('user-profile','${n.id}')" style="cursor:pointer">
+            ${avatarHtml(n.name, n.avatar_url, 'neighbor-avatar')}
+            <div>
+              <div class="neighbor-name">${firstName}</div>
+              <div class="neighbor-unit">${locationLabel}</div>
+            </div>
           </div>
+          ${n.pets_summary ? `<div class="neighbor-pets">🐾 ${n.pets_summary}</div>` : ''}
+          <button class="btn-outline btn-sm" onclick="navigate('new-request','${n.id}')">Request ${firstName}</button>
         </div>
-        ${n.pets_summary ? `<div class="neighbor-pets">🐾 ${n.pets_summary}</div>` : ''}
-        <button class="btn-outline btn-sm" onclick="navigate('new-request','${n.id}')">Request ${n.name.split(' ')[0]}</button>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } catch {}
 }
 
@@ -690,9 +702,11 @@ async function loadUserProfile(id) {
     el.innerHTML = `
       <a href="#" onclick="history.back();return false" style="color:var(--text-muted);font-size:.9rem">← Back</a>
       <div class="profile-card" style="margin-top:16px">
-        <div class="profile-avatar">${u.name[0].toUpperCase()}</div>
+        <div class="profile-avatar-wrap">
+          ${avatarHtml(u.name, u.avatar_url, 'profile-avatar')}
+        </div>
         <div class="profile-info">
-          <h2>${u.name}</h2>
+          <h2>${u.name.split(' ')[0]}</h2>
           <p>${u.building}</p>
           ${u.bio ? `<p style="margin-top:6px">${u.bio}</p>` : ''}
           ${u.avgRating ? `<div class="rating-row" style="margin-top:8px"><div class="stars">${starsHtml}</div><span>${u.avgRating} (${u.reviews.length} reviews)</span></div>` : ''}
@@ -1470,6 +1484,16 @@ async function loadSettings() {
       <div class="settings-section">
         <h2>Profile</h2>
         <div class="form-card">
+          <div class="form-row avatar-upload-row">
+            <div class="avatar-upload-preview" id="avatar-preview">
+              ${avatarHtml(s.name, s.avatar_url, 'settings-avatar')}
+            </div>
+            <div>
+              <label class="btn-outline btn-sm" for="avatar-input" style="cursor:pointer">Change photo</label>
+              <input type="file" id="avatar-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" onchange="uploadAvatar(this)" />
+              <p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">JPG, PNG or GIF · max 4 MB</p>
+            </div>
+          </div>
           <div class="form-row">
             <label>Display name</label>
             <input type="text" id="s-name" value="${s.name}" />
@@ -1545,6 +1569,25 @@ async function loadSettings() {
       </div>
     `;
   } catch (e) { document.getElementById('settings-content').innerHTML = `<p class="error-msg">${e.message}</p>`; }
+}
+
+async function uploadAvatar(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { alert('Image must be under 4 MB'); input.value = ''; return; }
+  const formData = new FormData();
+  formData.append('avatar', file);
+  const fbUser = firebase.auth().currentUser;
+  const headers = {};
+  if (fbUser) headers['Authorization'] = `Bearer ${await fbUser.getIdToken()}`;
+  try {
+    const res = await fetch((window.API_BASE || '') + '/api/avatar', { method: 'POST', headers, body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    currentUser = await api('GET', '/api/me');
+    const preview = document.getElementById('avatar-preview');
+    if (preview) preview.innerHTML = avatarHtml(currentUser.name, currentUser.avatar_url, 'settings-avatar');
+  } catch (e) { alert('Upload failed: ' + e.message); }
 }
 
 async function saveSettings() {
