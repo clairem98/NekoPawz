@@ -959,8 +959,9 @@ auth.onAuthStateChanged(async (user) => {
     }
     // Try to detect 403
     const msg = e.message || '';
-    if (msg.includes('admin') || msg.includes('Access denied') || msg.includes('403')) {
-      errorEl.textContent = 'Access denied — your account doesn\'t have admin permissions.';
+    if (msg.includes('Access denied') || msg.includes('not in ADMIN_EMAILS') || msg.includes('403')) {
+      // Show the exact email so user knows what to add to ADMIN_EMAILS
+      errorEl.innerHTML = `${msg}<br><small style="opacity:.8">Add this email to the <code>ADMIN_EMAILS</code> environment variable in Railway, then redeploy.</small>`;
       errorEl.style.display = 'block';
       await auth.signOut();
       return;

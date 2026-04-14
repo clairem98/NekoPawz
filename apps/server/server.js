@@ -848,8 +848,9 @@ async function requireAdmin(req, res, next) {
   try {
     const decoded = await admin.auth().verifyIdToken(auth.slice(7));
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    console.log(`[admin] login attempt: ${decoded.email} | configured: [${adminEmails.join(', ')}]`);
     if (!decoded.email || !adminEmails.includes(decoded.email.toLowerCase())) {
-      return res.status(403).json({ error: 'Access denied — admin only' });
+      return res.status(403).json({ error: `Access denied — ${decoded.email || 'unknown'} is not in ADMIN_EMAILS` });
     }
     req.adminEmail = decoded.email;
     next();
