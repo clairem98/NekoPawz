@@ -521,7 +521,7 @@ function formatRequestDate(dateStr) {
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
   if (d.getTime() === today.getTime())    return 'Today';
   if (d.getTime() === tomorrow.getTime()) return 'Tomorrow';
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 // ── Profile ────────────────────────────────────────────────────────────────
