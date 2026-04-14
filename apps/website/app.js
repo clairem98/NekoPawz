@@ -8,7 +8,11 @@ let myRequestsTab = 'posted';
 
 // ── Avatar helper ──────────────────────────────────────────────────────────
 function avatarHtml(name, avatarUrl, cls = 'neighbor-avatar') {
-  if (avatarUrl) return `<img src="${(window.API_BASE||'')}${avatarUrl}" class="${cls} ${cls}-img" alt="${name}" />`;
+  if (avatarUrl) {
+    // Cloudinary / absolute URLs must NOT have API_BASE prepended
+    const src = avatarUrl.startsWith('http') ? avatarUrl : (window.API_BASE || '') + avatarUrl;
+    return `<img src="${src}" class="${cls} ${cls}-img" alt="${name || ''}" />`;
+  }
   return `<div class="${cls}">${name ? name[0].toUpperCase() : '?'}</div>`;
 }
 
@@ -22,9 +26,15 @@ async function api(method, path, body) {
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    // Server returned HTML (502 gateway, deploy restart, etc.) instead of JSON
+    throw new Error(`Server unavailable (${res.status}). Please try again in a moment.`);
+  }
   if (!res.ok) {
-    const err = new Error(data.error || 'Request failed');
+    const err = new Error(data?.error || 'Request failed');
     err.status = res.status;
     throw err;
   }
@@ -162,8 +172,12 @@ function updateNavCredits() {
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDashboard() {
+  const firstName = currentUser.name.split(' ')[0];
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
   const greeting = document.getElementById('dashboard-greeting');
-  greeting.innerHTML = `Good to see you, <span>${currentUser.name.split(' ')[0]}</span> 👋`;
+  greeting.innerHTML = `${timeGreeting}, <span>${firstName}</span> 👋`;
   document.getElementById('credits-num').textContent = currentUser.credits;
 
   // Activity
@@ -171,45 +185,100 @@ async function loadDashboard() {
     const activity = await api('GET', '/api/activity');
     const list = document.getElementById('activity-list');
     if (!activity.length) {
-      list.innerHTML = '<p style="color:var(--text-muted);font-size:.85rem">No activity yet.</p>';
+      list.innerHTML = `
+        <div class="dash-empty-activity">
+          <p>No activity yet.</p>
+          <p class="dash-empty-hint">Help a neighbor to earn your first credit — then you can post a request of your own.</p>
+          <a href="#" data-page="browse" class="dash-empty-link">Browse open requests →</a>
+        </div>`;
     } else {
       list.innerHTML = activity.slice(0, 5).map(t => {
         const earned = t.to_user_id === currentUser.id;
+        const other  = earned ? t.from_name : t.to_name;
         return `
           <div class="activity-item">
-            <div class="activity-icon">${earned ? '✅' : '📤'}</div>
+            <div class="activity-dot ${earned ? 'earned' : 'spent'}"></div>
             <div class="activity-text">
-              <div>${earned ? `Earned from <strong>${t.from_name}</strong>` : `Paid to <strong>${t.to_name}</strong>`}</div>
-              <div style="font-size:.75rem;color:var(--text-muted)">${t.request_title || ''}</div>
+              <div class="activity-label">${earned ? `Helped ${other}` : `Care from ${other}`}</div>
+              <div class="activity-sub">${t.request_title || ''} · ${timeAgo(t.created_at)}</div>
             </div>
-            <div class="activity-credit ${earned ? 'earned' : 'spent'}">${earned ? '+' : '-'}${t.credits}</div>
+            <div class="activity-credit ${earned ? 'earned' : 'spent'}">${earned ? '+' : '−'}${t.credits} cr</div>
           </div>`;
       }).join('');
     }
   } catch {}
 
-  // Upcoming sits reminder
-  try {
-    const upcoming = await api('GET', '/api/upcoming');
-    if (upcoming.length && currentUser.notif_reminders !== 0) {
-      const banner = upcoming.map(r => {
-        const isHelper = r.helper_id === currentUser.id;
-        const label = isHelper ? `You're helping with "${r.title}"` : `"${r.title}" is scheduled`;
-        return `<div class="reminder-item" onclick="navigate('request-detail','${r.id}')">
-          ⏰ <strong>${label}</strong> on ${r.date}${r.time_window ? ' · ' + r.time_window : ''}
-        </div>`;
-      }).join('');
-      const remindersEl = document.getElementById('dashboard-reminders');
-      if (remindersEl) remindersEl.innerHTML = banner;
-    }
-  } catch {}
+  // Reminders + onboarding banner
+  const remindersEl = document.getElementById('dashboard-reminders');
+  if (remindersEl) {
+    // Upcoming sits
+    try {
+      const upcoming = await api('GET', '/api/upcoming');
+      if (upcoming.length && currentUser.notif_reminders !== 0) {
+        remindersEl.innerHTML = upcoming.map(r => {
+          const isHelper = r.helper_id === currentUser.id;
+          const label = isHelper ? `You're helping with "${r.title}"` : `"${r.title}" is coming up`;
+          return `<div class="reminder-item" onclick="navigate('request-detail','${r.id}')">
+            ⏰ <strong>${label}</strong> — ${formatRequestDate(r.date)}${r.time_window ? ', ' + r.time_window : ''}
+          </div>`;
+        }).join('');
+        return; // Skip onboarding if there are real reminders
+      }
+    } catch {}
 
-  // Open requests nearby (not mine)
+    // Onboarding checklist for new users
+    const hasActivity   = currentUser.credits > 1;
+    const hasPets       = currentUser.pets?.length > 0;
+    const hasProfilePic = !!currentUser.avatar_url;
+    if (!hasActivity && !hasPets && !hasProfilePic) {
+      remindersEl.innerHTML = `
+        <div class="onboarding-card">
+          <div class="onboarding-title">👋 Welcome to NekoPawz! Here's how to get started:</div>
+          <div class="onboarding-steps">
+            <div class="ob-step ${hasProfilePic ? 'ob-done' : ''}">
+              <span class="ob-check">${hasProfilePic ? '✓' : '1'}</span>
+              <div class="ob-body">
+                <strong>Set up your profile</strong>
+                <span>Add a photo so neighbors recognize you</span>
+              </div>
+              ${!hasProfilePic ? `<button class="btn-outline btn-sm" onclick="navigate('profile')">Go →</button>` : ''}
+            </div>
+            <div class="ob-step ${hasPets ? 'ob-done' : ''}">
+              <span class="ob-check">${hasPets ? '✓' : '2'}</span>
+              <div class="ob-body">
+                <strong>Add your pet</strong>
+                <span>Helpers want to know who they'll be caring for</span>
+              </div>
+              ${!hasPets ? `<button class="btn-outline btn-sm" onclick="navigate('profile')">Add pet →</button>` : ''}
+            </div>
+            <div class="ob-step">
+              <span class="ob-check">3</span>
+              <div class="ob-body">
+                <strong>Help a neighbor first</strong>
+                <span>Earn a credit, then post your own request</span>
+              </div>
+              <button class="btn-outline btn-sm" data-page="browse">Browse →</button>
+            </div>
+          </div>
+        </div>`;
+    }
+  }
+
+  // Open requests nearby
   try {
     const requests = await api('GET', '/api/requests?status=open');
     const grid = document.getElementById('dashboard-requests');
     if (!requests.length) {
-      grid.innerHTML = '<div class="empty"><p>No open requests nearby right now.</p></div>';
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="es-icon">🏘️</div>
+          <h3>No open requests nearby</h3>
+          <p>Your neighbors haven't posted any requests yet. Be the first to help — or post your own request and see who volunteers.</p>
+          <div class="es-actions">
+            <button class="btn-primary" data-page="new-request">Post a request</button>
+            <button class="btn-outline" data-page="neighbors">Meet your neighbors</button>
+          </div>
+        </div>`;
     } else {
       grid.innerHTML = requests.slice(0, 6).map(r => requestCard(r)).join('');
     }
@@ -253,7 +322,16 @@ async function loadBrowse() {
     const countEl = document.getElementById('browse-count');
     if (!filtered.length) {
       countEl.textContent = '';
-      grid.innerHTML = '<div class="empty"><p>No open requests match these filters.</p></div>';
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="es-icon">🔍</div>
+          <h3>No requests match these filters</h3>
+          <p>Try expanding your distance filter or checking back later. You can also be the first to post a request!</p>
+          <div class="es-actions">
+            <button class="btn-primary" data-page="new-request">Post a request</button>
+            <button class="btn-outline" onclick="browseLocationFilter='1';loadBrowse()">Widen to 1 mile</button>
+          </div>
+        </div>`;
     } else {
       countEl.textContent = `${filtered.length} request${filtered.length !== 1 ? 's' : ''} found`;
       grid.innerHTML = filtered.map(r => requestCard(r)).join('');
@@ -324,6 +402,18 @@ async function loadNewRequestPage(directedTo = null) {
     const v = Math.min(me.credits, parseInt(hidden.value) + 1);
     hidden.value = v; display.textContent = v;
   };
+}
+
+// ── Date helpers ───────────────────────────────────────────────────────────
+// "2025-04-18" → "Fri, Apr 18"
+function formatRequestDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+  if (d.getTime() === today.getTime())    return 'Today';
+  if (d.getTime() === tomorrow.getTime()) return 'Tomorrow';
+  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 // ── Profile ────────────────────────────────────────────────────────────────
@@ -577,26 +667,40 @@ async function loadMessages() {
   try {
     const convos = await api('GET', '/api/conversations');
     if (!convos.length) {
-      list.innerHTML = '<div class="empty"><p>No conversations yet. Conversations start once a request is accepted.</p></div>';
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="es-icon">💬</div>
+          <h3>No messages yet</h3>
+          <p>Conversations appear here once a request is accepted — either yours or one you've volunteered to help with. Messages let you coordinate keys, timing, and pet details.</p>
+          <div class="es-actions">
+            <button class="btn-primary" data-page="browse">Volunteer to help</button>
+            <button class="btn-outline" data-page="new-request">Post a request</button>
+          </div>
+        </div>`;
       return;
     }
+    const statusLabels = { open: 'Open', accepted: 'In progress', completed: 'Completed', cancelled: 'Cancelled' };
     list.innerHTML = convos.map(c => {
-      const otherId = c.requester_id === currentUser.id ? c.helper_id : c.requester_id;
       const otherName = c.requester_id === currentUser.id ? (c.helper_name || 'Helper') : c.requester_name;
-      const isMine = c.last_sender_id === currentUser.id;
-      const preview = isMine ? `You: ${c.last_message}` : c.last_message;
+      const firstName = (otherName || '?').split(' ')[0];
+      const isMine  = c.last_sender_id === currentUser.id;
+      const preview = c.last_message ? (isMine ? `You: ${c.last_message}` : c.last_message) : 'No messages yet — say hello!';
+      const unread  = !isMine && c.unread_count > 0;
       return `
-        <div class="convo-item" onclick="navigate('request-detail','${c.id}')">
-          <div class="convo-avatar">${otherName[0].toUpperCase()}</div>
+        <div class="convo-item ${unread ? 'convo-unread' : ''}" onclick="navigate('request-detail','${c.id}')">
+          <div class="convo-avatar">${firstName[0].toUpperCase()}</div>
           <div class="convo-body">
             <div class="convo-top">
-              <span class="convo-name">${otherName}</span>
-              <span class="convo-time">${timeAgo(c.last_message_at)}</span>
+              <span class="convo-name">${firstName}</span>
+              <span class="convo-time">${c.last_message_at ? timeAgo(c.last_message_at) : ''}</span>
             </div>
             <div class="convo-title">${typeLabel(c.type)} · ${c.title}</div>
             <div class="convo-preview">${preview}</div>
           </div>
-          <span class="req-status status-${c.status}">${c.status}</span>
+          <div class="convo-right">
+            <span class="req-status status-${c.status}">${statusLabels[c.status] || c.status}</span>
+            ${unread ? `<span class="convo-unread-dot"></span>` : ''}
+          </div>
         </div>
       `;
     }).join('');
@@ -610,7 +714,15 @@ async function loadNeighbors() {
     const neighbors = await api('GET', '/api/neighbors');
     const grid = document.getElementById('neighbors-grid');
     if (!neighbors.length) {
-      grid.innerHTML = '<div class="empty"><p>No other neighbors have joined yet. Spread the word!</p></div>';
+      grid.innerHTML = `
+        <div class="empty-state">
+          <div class="es-icon">🏘️</div>
+          <h3>No neighbors yet</h3>
+          <p>You're one of the first NekoPawz members in your area! Share the link with neighbors to grow your community. The more neighbors join, the more help you can all give and receive.</p>
+          <div class="es-actions">
+            <button class="btn-primary" onclick="navigator.clipboard.writeText('https://www.nekopawz.com').then(()=>this.textContent='✓ Copied!').catch(()=>{})">Copy invite link</button>
+          </div>
+        </div>`;
       return;
     }
     grid.innerHTML = neighbors.map(n => {
@@ -640,7 +752,18 @@ async function loadMyRequests() {
     const requests = await api('GET', url);
     const list = document.getElementById('my-requests-list');
     if (!requests.length) {
-      list.innerHTML = '<div class="empty"><p>Nothing here yet.</p></div>';
+      const isPosted = myRequestsTab === 'posted';
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="es-icon">${isPosted ? '📋' : '🤝'}</div>
+          <h3>${isPosted ? "You haven't posted any requests yet" : "You haven't helped anyone yet"}</h3>
+          <p>${isPosted
+            ? "Post a request when you need help with your pet — dog walks, cat check-ins, or anything else. You'll be matched with a neighbor who volunteers."
+            : "Browse open requests nearby and volunteer to help. When a neighbor accepts you, the request moves here and you can message each other."}</p>
+          <div class="es-actions">
+            <button class="btn-primary" data-page="${isPosted ? 'new-request' : 'browse'}">${isPosted ? 'Post a request' : 'Browse requests'}</button>
+          </div>
+        </div>`;
     } else {
       list.innerHTML = requests.map(r => requestCard(r, true)).join('');
     }
@@ -1406,40 +1529,47 @@ async function submitReview(requestId, revieweeId) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function requestCard(r, showStatus = false) {
-  // Show unit only if it's my own request or I'm the accepted helper
-  const isInvolved = r.requester_id === currentUser?.id || r.helper_id === currentUser?.id;
-  const confirmed = isInvolved && r.status !== 'open';
+  const isInvolved  = r.requester_id === currentUser?.id || r.helper_id === currentUser?.id;
+  const confirmed   = isInvolved && r.status !== 'open';
   const sameBuilding = r.distanceLabel === 'Same building' || r.req_building === currentUser?.building;
+
   let locationHint;
   if (confirmed) {
-    // After confirmation: show unit + building context
     locationHint = sameBuilding
-      ? `<span>Unit ${r.requester_unit} · Same building</span>`
-      : `<span>${r.requester_address || r.distanceLabel}</span>`;
+      ? `<span class="req-meta-tag">🏢 Same building · Unit ${r.requester_unit}</span>`
+      : `<span class="req-meta-tag">📍 ${r.requester_address || r.distanceLabel}</span>`;
   } else {
-    // Before confirmation: same building is fine to show, but no unit; others show distance only
     locationHint = sameBuilding
-      ? `<span>Same building</span>`
-      : `<span title="Address revealed after confirmation">📍 ${r.distanceLabel || 'Nearby'}</span>`;
+      ? `<span class="req-meta-tag">🏢 Same building</span>`
+      : `<span class="req-meta-tag" title="Exact address revealed after confirmation">📍 ${r.distanceLabel || 'Nearby'}</span>`;
   }
+
+  const posterName = r.requester_id !== currentUser?.id
+    ? (r.requester_name || '').split(' ')[0]
+    : null;
+
+  const statusLabels = { open: 'Open', accepted: 'In progress', completed: 'Completed', cancelled: 'Cancelled' };
 
   return `
     <div class="request-card" onclick="navigate('request-detail','${r.id}')">
       <div class="req-header">
         <span class="req-type-badge">${typeLabel(r.type)}</span>
-        <span class="req-credits-badge">${r.credits || 1} cr</span>
+        <div class="req-header-right">
+          ${r.directed_to ? `<span class="directed-badge">For you</span>` : ''}
+          ${showStatus ? `<span class="req-status status-${r.status}">${statusLabels[r.status] || r.status}</span>` : ''}
+          <span class="req-credits-badge">${r.credits || 1} cr</span>
+        </div>
       </div>
       <div class="req-title">${r.title}</div>
+      ${posterName ? `<div class="req-poster">Posted by <strong>${posterName}</strong></div>` : ''}
       <div class="req-meta">
-        <span>📅 ${r.date}</span>
-        ${r.time_window ? `<span>🕐 ${r.time_window}</span>` : ''}
-        ${r.duration ? `<span>⏱ ${r.duration}</span>` : ''}
-        ${(r.petNames || r.pet_name) ? `<span>${petEmoji(r.pet_type)} ${r.petNames || r.pet_name}${r.pet_breed ? ` · ${r.pet_breed}` : ''}</span>` : ''}
+        <span class="req-meta-tag req-date-tag">📅 ${formatRequestDate(r.date)}</span>
+        ${r.time_window ? `<span class="req-meta-tag">🕐 ${r.time_window}</span>` : ''}
+        ${r.duration    ? `<span class="req-meta-tag">⏱ ${r.duration}</span>`    : ''}
+        ${(r.petNames || r.pet_name) ? `<span class="req-meta-tag">${petEmoji(r.pet_type || r.type)} ${r.petNames || r.pet_name}</span>` : ''}
         ${locationHint}
       </div>
-      ${r.pet_notes ? `<div class="req-pet-notes">${r.pet_notes}</div>` : ''}
-      ${r.directed_to ? `<span class="directed-badge">For you</span>` : ''}
-      ${showStatus ? `<span class="req-status status-${r.status}">${r.status}</span>` : ''}
+      ${r.pet_notes ? `<div class="req-pet-notes">"${r.pet_notes}"</div>` : ''}
     </div>
   `;
 }

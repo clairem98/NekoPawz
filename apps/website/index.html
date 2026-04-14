@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NekoPawz — Neighbor Pet Care Exchange</title>
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
@@ -138,11 +138,12 @@
         <div class="dash-card credits-card" id="credits-display">
           <div class="credits-num" id="credits-num">—</div>
           <div class="credits-label">credits available</div>
+          <div class="credits-hint">Earn by helping · Spend to get help</div>
         </div>
         <div class="dash-card quick-card">
           <h3>Quick actions</h3>
-          <button class="btn-primary full-width" data-page="new-request">Post a request</button>
-          <button class="btn-outline full-width mt-s" data-page="browse">Help a neighbor</button>
+          <button class="btn-primary full-width" data-page="new-request">📋 Post a request</button>
+          <button class="btn-outline full-width mt-s" data-page="browse">🤝 Help a neighbor</button>
         </div>
         <div class="dash-card activity-card">
           <h3>Recent activity</h3>
@@ -150,10 +151,11 @@
         </div>
       </div>
       <div id="dashboard-reminders"></div>
-      <div class="section-header">
+      <div class="section-header mt-m">
         <h2>Open requests nearby</h2>
         <a href="#" data-page="browse">View all →</a>
       </div>
+      <p class="page-sub" style="margin:-10px 0 18px">Neighbors who need a hand right now</p>
       <div id="dashboard-requests" class="request-grid"></div>
     </div>
   </div>
@@ -162,8 +164,8 @@
   <div id="page-browse" class="page hidden">
     <div class="page-content">
       <div class="browse-header">
-        <h1>Open requests</h1>
-        <p class="sub" style="margin:4px 0 20px">Neighbors in your building or nearby who need a hand</p>
+        <h1>Help a neighbor</h1>
+        <p class="sub" style="margin:4px 0 20px">Volunteer for a request, get accepted, and earn a credit. Exact addresses are only revealed after you're matched.</p>
         <div class="filter-panel">
           <div class="filter-row">
             <span class="filter-label">Type</span>
@@ -304,10 +306,11 @@
   <!-- MY REQUESTS -->
   <div id="page-my-requests" class="page hidden">
     <div class="page-content">
-      <h1 style="font-family:'Fraunces',serif;font-size:2rem;color:var(--green-deep);margin-bottom:24px">My requests</h1>
+      <h1 style="font-family:'Fraunces',serif;font-size:2rem;color:var(--green-deep);margin-bottom:6px">My requests</h1>
+      <p class="sub" style="margin-bottom:20px">Track requests you've posted and help you've committed to.</p>
       <div class="tab-bar">
         <button class="tab active" data-tab="posted">Posted by me</button>
-        <button class="tab" data-tab="helping">I'm helping</button>
+        <button class="tab" data-tab="helping">I'm helping with</button>
       </div>
       <div id="my-requests-list" class="request-grid"></div>
     </div>
@@ -317,7 +320,7 @@
   <div id="page-neighbors" class="page hidden">
     <div class="page-content">
       <h1 style="font-family:'Fraunces',serif;font-size:2rem;color:var(--green-deep);margin-bottom:8px">Your neighbors</h1>
-      <p class="sub">NekoPawz members in your building and nearby neighborhood.</p>
+      <p class="sub" style="margin-bottom:24px">Fellow pet owners in your building and nearby. Click any neighbor to view their profile or send them a request directly.</p>
       <div id="neighbors-grid" class="neighbor-grid"></div>
     </div>
   </div>
@@ -374,7 +377,7 @@
   <div id="page-messages" class="page hidden">
     <div class="page-content narrow">
       <h1>Messages</h1>
-      <p class="sub">Conversations with your neighbors</p>
+      <p class="sub" style="margin-bottom:20px">Chat with neighbors about timing, keys, and your pet's needs. Conversations open once a request is accepted.</p>
       <div id="messages-list"></div>
     </div>
   </div>
@@ -432,6 +435,6 @@
     : 'https://nekopawzserver-production.up.railway.app';
 </script>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
