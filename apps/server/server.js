@@ -299,6 +299,9 @@ app.post('/api/requests', requireAuth, async (req, res) => {
     directed_to: directed_to || null, directed_to_name,
     pet_ids: petIdsArr, pet_names: petNames,
     building: user.building,
+    // Store requester coordinates so distance filtering works in /api/requests
+    req_lat: user.lat || null,
+    req_lng: user.lng || null,
     last_message: null, last_message_at: null, last_sender_id: null,
     created_at: new Date().toISOString()
   });
@@ -820,6 +823,13 @@ app.post('/api/contact', async (req, res) => {
     console.error('Contact email error:', err.message);
     res.status(500).json({ error: 'Failed to send message. Please try again later.' });
   }
+});
+
+// ── Public config ────────────────────────────────────────────────────────────
+// Exposes only public/restricted keys that are safe to share with the browser.
+// The Google Maps key should be restricted by HTTP referrer in Google Cloud Console.
+app.get('/api/config', (req, res) => {
+  res.json({ mapsKey: process.env.GOOGLE_MAPS_KEY || '' });
 });
 
 // ── Global error handler ─────────────────────────────────────────────────────

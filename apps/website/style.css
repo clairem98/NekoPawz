@@ -499,6 +499,23 @@ nav {
   padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 14px;
 }
 
+/* Address confirmation status */
+.addr-status { font-size: .8rem; margin-top: 5px; min-height: 1.2em; color: var(--text-muted); }
+.addr-status.addr-ok { color: var(--green-mid); font-weight: 600; }
+input.addr-confirmed { border-color: var(--green-mid) !important; box-shadow: 0 0 0 2px rgba(64,145,108,.15); }
+
+/* Google Places autocomplete dropdown — needs high z-index to sit above our modal */
+.pac-container {
+  z-index: 99999 !important;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 20px rgba(0,0,0,.12);
+  font-family: inherit;
+  border: 1px solid var(--border);
+}
+.pac-item { padding: 8px 12px; font-size: .88rem; cursor: pointer; }
+.pac-item:hover { background: var(--bg-soft); }
+.pac-item-query { font-weight: 600; color: var(--text-main); }
+
 /* ─── PROFILE HERO ────────────────────────────────────────────────────── */
 .profile-hero {
   background: var(--surface); border: 1px solid var(--border);
