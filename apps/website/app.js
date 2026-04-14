@@ -334,6 +334,9 @@ function formatDate(iso) {
 }
 
 async function loadProfile() {
+  // Show loading placeholder so the card never looks blank
+  const hero = document.getElementById('profile-hero');
+  if (hero) hero.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">Loading…</div>';
   try {
     const [me, activity] = await Promise.all([
       api('GET', '/api/me'),
@@ -419,7 +422,11 @@ async function loadProfile() {
     }
 
     renderPets(me.pets);
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error('loadProfile error:', e);
+    const h = document.getElementById('profile-hero');
+    if (h) h.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-muted)">Couldn't load profile — ${e.message}. <button class="btn-outline btn-sm" onclick="loadProfile()" style="margin-top:8px">Retry</button></div>`;
+  }
 }
 
 // ── Profile edit modal ──────────────────────────────────────────────────────
