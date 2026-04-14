@@ -430,9 +430,9 @@
     appId:             "1:13895845434:web:b3b39c1b5d811374bb1703"
   });
 
-  // API base URL — leave empty for local dev; set to your Railway URL for production
-  // e.g. window.API_BASE = 'https://nekopawz-server.up.railway.app';
-  window.API_BASE = '';
+  window.API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? ''
+    : 'https://nekopawzserver-production.up.railway.app';
 </script>
 
 <script src="app.js"></script>
