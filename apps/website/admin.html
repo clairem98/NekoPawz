@@ -462,6 +462,9 @@
         <div class="nav-item" data-tab="transactions">
           <span class="nav-icon">💳</span> Transactions
         </div>
+        <div class="nav-item" data-tab="messages">
+          <span class="nav-icon">💬</span> Messages
+        </div>
       </nav>
       <div class="sidebar-footer">
         <div class="sidebar-user" id="sidebar-user-email"></div>
@@ -576,11 +579,57 @@
           </div>
         </div>
 
+        <!-- MESSAGES TAB -->
+        <div class="tab-section" id="tab-messages">
+          <div class="section-header">
+            <h3>Support Messages</h3>
+          </div>
+          <div id="messages-error" class="inline-error"></div>
+          <div class="table-wrap">
+            <table id="messages-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>To</th>
+                  <th>Subject</th>
+                  <th>Body</th>
+                  <th>Read</th>
+                </tr>
+              </thead>
+              <tbody id="messages-tbody">
+                <tr class="state-row"><td colspan="5">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div><!-- /.main-content -->
     </div><!-- /.main-area -->
 
   </div><!-- /.shell-layout -->
 </div><!-- /#app-shell -->
+
+<!-- COMPOSE MESSAGE MODAL -->
+<div id="compose-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;align-items:center;justify-content:center;">
+  <div style="background:var(--white);border-radius:12px;padding:28px 32px;width:460px;max-width:95vw;box-shadow:0 8px 40px rgba(0,0,0,0.18);position:relative;">
+    <h3 style="font-size:16px;font-weight:600;color:var(--green-dark);margin-bottom:16px;">✉️ Send Message</h3>
+    <div id="compose-recipient" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:9px 12px;font-size:13px;color:var(--text-muted);margin-bottom:14px;"></div>
+    <div id="compose-error" style="display:none;background:var(--danger-light);color:var(--danger);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;"></div>
+    <div id="compose-success" style="display:none;background:#e8f5ed;color:var(--green-mid);border-radius:7px;padding:9px 12px;font-size:13px;margin-bottom:12px;"></div>
+    <div style="margin-bottom:12px;">
+      <label style="font-size:13px;font-weight:500;color:var(--text);display:block;margin-bottom:5px;">Subject</label>
+      <input type="text" id="compose-subject" placeholder="Subject…" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;background:var(--white);color:var(--text);outline:none;" />
+    </div>
+    <div style="margin-bottom:18px;">
+      <label style="font-size:13px;font-weight:500;color:var(--text);display:block;margin-bottom:5px;">Message</label>
+      <textarea id="compose-body" rows="5" placeholder="Write your message…" style="width:100%;border:1px solid var(--border);border-radius:7px;padding:8px 12px;font-size:13px;background:var(--white);color:var(--text);outline:none;resize:vertical;font-family:inherit;"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn-action btn-cancel" onclick="closeComposeModal()">Cancel</button>
+      <button class="btn-action btn-save" id="compose-send-btn" onclick="sendComposeMessage()">Send</button>
+    </div>
+  </div>
+</div>
 
 <script>
 // ── Firebase config ──────────────────────────────────────────────────────────
@@ -662,7 +711,7 @@ function switchTab(name) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   document.querySelector('[data-tab="' + name + '"]').classList.add('active');
-  const titles = { overview: 'Overview', users: 'Users', requests: 'Requests', transactions: 'Transactions' };
+  const titles = { overview: 'Overview', users: 'Users', requests: 'Requests', transactions: 'Transactions', messages: 'Messages' };
   document.getElementById('topbar-title').textContent = titles[name] || name;
   loadTab(name);
 }
@@ -673,6 +722,7 @@ async function loadTab(name) {
   else if (name === 'users') await loadUsers();
   else if (name === 'requests') await loadRequests();
   else if (name === 'transactions') await loadTransactions();
+  else if (name === 'messages') await loadMessages();
 }
 
 // ── OVERVIEW ─────────────────────────────────────────────────────────────────
@@ -759,6 +809,7 @@ function renderUsers() {
         <div class="actions-cell">
           <button class="btn-action btn-edit" onclick="startEditUser('${u.id}')">Edit</button>
           <button class="btn-action btn-delete" onclick="deleteUser('${u.id}', ${JSON.stringify(esc(u.name))})">Delete</button>
+          <button class="btn-action" style="background:#e8f0fe;color:#2980b9;" onclick="openComposeModal('${u.id}', ${JSON.stringify(esc(u.name))}, ${JSON.stringify(esc(u.email))})">✉️ Message</button>
         </div>
       </td>
     </tr>
@@ -893,6 +944,92 @@ async function deleteRequest(id) {
     showError('requests-error', 'Failed to delete: ' + e.message);
   }
 }
+
+// ── MESSAGES ─────────────────────────────────────────────────────────────────
+let allAdminMessages = [];
+
+async function loadMessages() {
+  hideError('messages-error');
+  document.getElementById('messages-tbody').innerHTML = '<tr class="state-row"><td colspan="5">Loading…</td></tr>';
+  try {
+    allAdminMessages = await api('GET', '/api/admin/messages');
+    renderMessages();
+  } catch (e) {
+    showError('messages-error', 'Failed to load messages: ' + e.message);
+    document.getElementById('messages-tbody').innerHTML = '<tr class="state-row"><td colspan="5">Error loading messages.</td></tr>';
+  }
+}
+
+function renderMessages() {
+  const tbody = document.getElementById('messages-tbody');
+  if (!allAdminMessages.length) {
+    tbody.innerHTML = '<tr class="state-row"><td colspan="5">No messages sent yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allAdminMessages.map(m => `
+    <tr>
+      <td class="text-muted">${fmtDateTime(m.created_at)}</td>
+      <td>${esc(m.to_user_name || m.to_user_id?.slice(0,8) || '—')}</td>
+      <td><strong>${esc(m.subject)}</strong></td>
+      <td class="text-muted">${esc((m.body || '').length > 80 ? m.body.slice(0, 80) + '…' : m.body)}</td>
+      <td>${m.read ? '<span class="badge" style="background:#e8f5ed;color:var(--green-mid)">Read</span>' : '<span class="badge badge-cancelled">Unread</span>'}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Compose modal ─────────────────────────────────────────────────────────────
+let composeUserId = null;
+
+function openComposeModal(userId, userName, userEmail) {
+  composeUserId = userId;
+  document.getElementById('compose-recipient').textContent = 'To: ' + userName + (userEmail ? ' (' + userEmail + ')' : '');
+  document.getElementById('compose-subject').value = '';
+  document.getElementById('compose-body').value = '';
+  document.getElementById('compose-error').style.display = 'none';
+  document.getElementById('compose-success').style.display = 'none';
+  document.getElementById('compose-send-btn').disabled = false;
+  document.getElementById('compose-send-btn').textContent = 'Send';
+  const overlay = document.getElementById('compose-overlay');
+  overlay.style.display = 'flex';
+}
+
+function closeComposeModal() {
+  document.getElementById('compose-overlay').style.display = 'none';
+  composeUserId = null;
+}
+
+async function sendComposeMessage() {
+  const subject = document.getElementById('compose-subject').value.trim();
+  const body = document.getElementById('compose-body').value.trim();
+  const errEl = document.getElementById('compose-error');
+  const successEl = document.getElementById('compose-success');
+  errEl.style.display = 'none';
+  successEl.style.display = 'none';
+  if (!subject) { errEl.textContent = 'Subject is required.'; errEl.style.display = 'block'; return; }
+  if (!body) { errEl.textContent = 'Message body is required.'; errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('compose-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    await api('POST', '/api/admin/messages', { to_user_id: composeUserId, subject, body });
+    successEl.textContent = 'Message sent successfully!';
+    successEl.style.display = 'block';
+    document.getElementById('compose-subject').value = '';
+    document.getElementById('compose-body').value = '';
+    setTimeout(closeComposeModal, 1500);
+    if (currentTab === 'messages') await loadMessages();
+  } catch (e) {
+    errEl.textContent = 'Failed to send: ' + e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Send';
+  }
+}
+
+// Close compose modal on overlay click
+document.getElementById('compose-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('compose-overlay')) closeComposeModal();
+});
 
 // ── TRANSACTIONS ─────────────────────────────────────────────────────────────
 async function loadTransactions() {

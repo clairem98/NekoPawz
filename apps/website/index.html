@@ -23,7 +23,12 @@
     <div class="nav-credits" id="nav-credits"></div>
     <div class="nav-bell" id="nav-bell">
       <button class="bell-btn" id="bell-btn" title="Notifications">🔔<span class="bell-badge hidden" id="bell-badge"></span></button>
-      <div class="bell-dropdown hidden" id="bell-dropdown"></div>
+      <div class="bell-dropdown hidden" id="bell-dropdown">
+        <div id="support-messages-section" style="display:none;">
+          <div style="padding:10px 14px 4px;font-size:11px;font-weight:600;color:var(--text-muted,#6b7c73);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #e2e8e4;margin-bottom:4px">Messages from Support</div>
+          <div id="support-messages-list"></div>
+        </div>
+      </div>
     </div>
     <div class="nav-gear" id="nav-gear">
       <button class="btn-ghost" id="gear-btn" title="Settings" onclick="toggleGearMenu()">⚙️</button>
@@ -435,6 +440,6 @@
     : 'https://nekopawzserver-production.up.railway.app';
 </script>
 
-<script src="app.js?v=13"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>

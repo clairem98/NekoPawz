@@ -973,6 +973,71 @@ app.get('/api/admin/transactions', requireAdmin, async (req, res) => {
   }
 });
 
+// ── Admin messaging ─────────────────────────────────────────────────────────
+
+// POST /api/admin/messages — send a message to a user
+app.post('/api/admin/messages', requireAdmin, async (req, res) => {
+  try {
+    const { to_user_id, subject, body } = req.body;
+    if (!to_user_id || !subject || !body) return res.status(400).json({ error: 'to_user_id, subject, and body are required' });
+    const userDoc = await db.collection('users').doc(to_user_id).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'User not found' });
+    const to_user_name = userDoc.data().name || '';
+    const id = uuidv4();
+    const message = {
+      id,
+      to_user_id,
+      to_user_name,
+      from_admin_email: req.adminEmail || 'admin',
+      subject,
+      body,
+      created_at: new Date().toISOString(),
+      read: false,
+    };
+    await db.collection('support_messages').doc(id).set(message);
+    res.json({ ok: true, id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/messages — get all sent messages, sorted newest first
+app.get('/api/admin/messages', requireAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection('support_messages').get();
+    const messages = snap.docs.map(d => d.data());
+    messages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(messages);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/support-messages — get all support messages for the current user
+app.get('/api/support-messages', requireAuth, async (req, res) => {
+  try {
+    const snap = await db.collection('support_messages').where('to_user_id', '==', req.userId).get();
+    const messages = snap.docs.map(d => d.data());
+    messages.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(messages);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/support-messages/:id/read — mark a message as read
+app.put('/api/support-messages/:id/read', requireAuth, async (req, res) => {
+  try {
+    const doc = await db.collection('support_messages').doc(req.params.id).get();
+    if (!doc.exists) return res.status(404).json({ error: 'Message not found' });
+    if (doc.data().to_user_id !== req.userId) return res.status(403).json({ error: 'Forbidden' });
+    await db.collection('support_messages').doc(req.params.id).update({ read: true });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Global error handler ─────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in route handlers and returns JSON
 // instead of a raw 500 HTML page, so the frontend can display a readable message.

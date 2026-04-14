@@ -151,15 +151,61 @@ function showApp() {
 // ── Notifications Bell ─────────────────────────────────────────────────────
 async function pollNotifications() {
   try {
-    const { unread } = await api('GET', '/api/notifications');
+    const [{ unread }, supportMsgs] = await Promise.all([
+      api('GET', '/api/notifications'),
+      api('GET', '/api/support-messages').catch(() => []),
+    ]);
+    const supportUnread = Array.isArray(supportMsgs) ? supportMsgs.filter(m => !m.read).length : 0;
+    const totalUnread = unread + supportUnread;
     const badge = document.getElementById('bell-badge');
-    if (unread > 0) {
-      badge.textContent = unread > 9 ? '9+' : unread;
+    if (totalUnread > 0) {
+      badge.textContent = totalUnread > 9 ? '9+' : totalUnread;
       badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');
     }
   } catch {}
+}
+
+// ── Support Messages ───────────────────────────────────────────────────────
+async function loadSupportMessages() {
+  const section = document.getElementById('support-messages-section');
+  const list = document.getElementById('support-messages-list');
+  if (!section || !list) return;
+  try {
+    const msgs = await api('GET', '/api/support-messages');
+    if (!msgs || !msgs.length) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    list.innerHTML = msgs.map(m => `
+      <div id="smsg-${m.id}" class="bell-item${m.read ? '' : ' unread'}" style="${m.read ? '' : 'background:#f0faf4;'}">
+        <div class="bell-item-icon">✉️</div>
+        <div class="bell-item-text" style="flex:1">
+          <div class="bell-item-title" style="font-weight:${m.read ? '400' : '600'}">${escHtml(m.subject)}</div>
+          <div class="bell-item-body">${escHtml(m.body)}</div>
+          <div class="bell-item-time">${timeAgo(m.created_at)}</div>
+          ${!m.read ? `<button onclick="markSupportMessageRead('${m.id}')" style="margin-top:4px;font-size:11px;padding:2px 8px;border:1px solid var(--green-accent,#40916c);background:transparent;color:var(--green-accent,#40916c);border-radius:4px;cursor:pointer;">Mark as read</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+  } catch {
+    section.style.display = 'none';
+  }
+}
+
+async function markSupportMessageRead(id) {
+  try {
+    await api('PUT', `/api/support-messages/${id}/read`);
+    await loadSupportMessages();
+    await pollNotifications();
+  } catch {}
+}
+
+function escHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 document.getElementById('bell-btn').addEventListener('click', async () => {
@@ -171,11 +217,17 @@ document.getElementById('bell-btn').addEventListener('click', async () => {
   try {
     const { notifications } = await api('GET', '/api/notifications');
     await api('POST', '/api/notifications/read-all');
-    document.getElementById('bell-badge').classList.add('hidden');
+    // Rebuild the notification items area (leave support-messages-section intact)
+    const section = document.getElementById('support-messages-section');
+    // Remove existing notif items (everything before the support section)
+    Array.from(dropdown.childNodes).forEach(n => {
+      if (n !== section) n.parentNode && n.parentNode.removeChild(n);
+    });
+    const notifContainer = document.createElement('div');
     if (!notifications.length) {
-      dropdown.innerHTML = '<div class="bell-empty">No notifications yet</div>';
+      notifContainer.innerHTML = '<div class="bell-empty">No notifications yet</div>';
     } else {
-      dropdown.innerHTML = notifications.slice(0, 10).map(n => `
+      notifContainer.innerHTML = notifications.slice(0, 10).map(n => `
         <div class="bell-item ${n.read ? '' : 'unread'}" ${n.request_id ? `onclick="navigate('request-detail','${n.request_id}');document.getElementById('bell-dropdown').classList.add('hidden')"` : ''}>
           <div class="bell-item-icon">${notifIcon(n.type)}</div>
           <div class="bell-item-text">
@@ -186,6 +238,11 @@ document.getElementById('bell-btn').addEventListener('click', async () => {
         </div>
       `).join('');
     }
+    dropdown.insertBefore(notifContainer, section);
+    // Load support messages into the section
+    await loadSupportMessages();
+    // Update badge (support messages not yet read are still unread at this point)
+    await pollNotifications();
     dropdown.classList.remove('hidden');
   } catch {}
 });
