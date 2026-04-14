@@ -810,7 +810,7 @@ function renderUsers() {
         <div class="actions-cell">
           <button class="btn-action btn-edit" onclick="startEditUser('${u.id}')">Edit</button>
           <button class="btn-action btn-delete" onclick="deleteUser('${u.id}', ${JSON.stringify(esc(u.name))})">Delete</button>
-          <button class="btn-action" style="background:#e8f0fe;color:#2980b9;" onclick="openComposeModal('${u.id}', ${JSON.stringify(esc(u.name))}, ${JSON.stringify(esc(u.email))})">✉️ Message</button>
+          <button class="btn-action" style="background:#e8f0fe;color:#2980b9;" data-uid="${u.id}" data-uname="${esc(u.name)}" data-uemail="${esc(u.email||'')}" onclick="openComposeModal(this.dataset.uid,this.dataset.uname,this.dataset.uemail)">✉️ Message</button>
         </div>
       </td>
     </tr>
