@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Left paw print (smaller, rotated) -->
+  <!-- Toe beans -->
+  <ellipse cx="10" cy="22" rx="4" ry="3" fill="#3a3a3a" transform="rotate(-20 10 22)"/>
+  <ellipse cx="17" cy="17" rx="4" ry="3" fill="#3a3a3a" transform="rotate(-20 17 17)"/>
+  <ellipse cx="25" cy="16" rx="4" ry="3" fill="#3a3a3a" transform="rotate(-20 25 16)"/>
+  <ellipse cx="31" cy="20" rx="4" ry="3" fill="#3a3a3a" transform="rotate(-20 31 20)"/>
+  <!-- Main pad -->
+  <ellipse cx="21" cy="30" rx="10" ry="8" fill="#3a3a3a" transform="rotate(-20 21 30)"/>
+
+  <!-- Right paw print (larger, offset) -->
+  <!-- Toe beans -->
+  <ellipse cx="30" cy="42" rx="4.5" ry="3.5" fill="#3a3a3a" transform="rotate(15 30 42)"/>
+  <ellipse cx="38" cy="37" rx="4.5" ry="3.5" fill="#3a3a3a" transform="rotate(15 38 37)"/>
+  <ellipse cx="47" cy="38" rx="4.5" ry="3.5" fill="#3a3a3a" transform="rotate(15 47 38)"/>
+  <ellipse cx="53" cy="44" rx="4.5" ry="3.5" fill="#3a3a3a" transform="rotate(15 53 44)"/>
+  <!-- Main pad -->
+  <ellipse cx="42" cy="52" rx="11" ry="9" fill="#3a3a3a" transform="rotate(15 42 52)"/>
+</svg>
