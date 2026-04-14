@@ -554,7 +554,7 @@ function openEditProfileModal() {
 async function uploadAvatarFromModal(input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 4 * 1024 * 1024) { alert('Image must be under 4 MB'); input.value = ''; return; }
+  if (file.size > 8 * 1024 * 1024) { alert('Image must be under 8 MB'); input.value = ''; return; }
   const formData = new FormData();
   formData.append('avatar', file);
   const fbUser = firebase.auth().currentUser;
@@ -618,7 +618,7 @@ function renderPets(pets) {
 async function uploadPetPhoto(petId, input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 4 * 1024 * 1024) { alert('Image must be under 4 MB'); input.value = ''; return; }
+  if (file.size > 8 * 1024 * 1024) { alert('Image must be under 8 MB'); input.value = ''; return; }
   const formData = new FormData();
   formData.append('photo', file);
   const headers = {};
@@ -1801,7 +1801,7 @@ async function loadSettings() {
             <div>
               <label class="btn-outline btn-sm" for="avatar-input" style="cursor:pointer">Change photo</label>
               <input type="file" id="avatar-input" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" onchange="uploadAvatar(this)" />
-              <p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">JPG, PNG or GIF · max 4 MB</p>
+              <p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">JPG, PNG or GIF · max 8 MB</p>
             </div>
           </div>
           <div class="form-row">
@@ -1884,7 +1884,7 @@ async function loadSettings() {
 async function uploadAvatar(input) {
   const file = input.files[0];
   if (!file) return;
-  if (file.size > 4 * 1024 * 1024) { alert('Image must be under 4 MB'); input.value = ''; return; }
+  if (file.size > 8 * 1024 * 1024) { alert('Image must be under 8 MB'); input.value = ''; return; }
   const formData = new FormData();
   formData.append('avatar', file);
   const fbUser = firebase.auth().currentUser;
