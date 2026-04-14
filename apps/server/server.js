@@ -838,6 +838,140 @@ app.get('/api/config', (req, res) => {
   res.json({ mapsKey: process.env.GOOGLE_MAPS_KEY || '' });
 });
 
+// ════════════════════════════════════════════════════════════════════════════
+// ADMIN
+// ════════════════════════════════════════════════════════════════════════════
+
+async function requireAdmin(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const decoded = await admin.auth().verifyIdToken(auth.slice(7));
+    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (!decoded.email || !adminEmails.includes(decoded.email.toLowerCase())) {
+      return res.status(403).json({ error: 'Access denied — admin only' });
+    }
+    req.adminEmail = decoded.email;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// Redirect /admin → /admin.html
+app.get('/admin', (req, res) => res.redirect('/admin.html'));
+
+// GET /api/admin/stats
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
+  try {
+    const [usersSnap, requestsSnap, transSnap] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('requests').get(),
+      db.collection('transactions').get(),
+    ]);
+    const requests = requestsSnap.docs.map(d => d.data());
+    const open      = requests.filter(r => r.status === 'open').length;
+    const accepted  = requests.filter(r => r.status === 'accepted').length;
+    const completed = requests.filter(r => r.status === 'completed').length;
+    const cancelled = requests.filter(r => r.status === 'cancelled').length;
+    const creditsInCirculation = usersSnap.docs.reduce((sum, d) => sum + (d.data().credits || 0), 0);
+    res.json({
+      users: usersSnap.size,
+      requests: { open, accepted, completed, cancelled },
+      transactions: transSnap.size,
+      creditsInCirculation,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/users
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection('users').get();
+    const users = snap.docs.map(d => {
+      const { firebase_uid, dob, ec_name, ec_phone, ec_relation, ...safe } = d.data();
+      return safe;
+    });
+    users.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(users);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/admin/users/:id
+app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    const updates = {};
+    if (req.body.credits  !== undefined) updates.credits  = parseInt(req.body.credits);
+    if (req.body.is_admin !== undefined) updates.is_admin = Boolean(req.body.is_admin);
+    if (req.body.name     !== undefined) updates.name     = req.body.name;
+    if (req.body.bio      !== undefined) updates.bio      = req.body.bio;
+    await db.collection('users').doc(req.params.id).update(updates);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/admin/users/:id
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.collection('users').doc(req.params.id).delete();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/requests
+app.get('/api/admin/requests', requireAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection('requests').get();
+    const requests = snap.docs.map(d => d.data());
+    requests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(requests);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/admin/requests/:id
+app.put('/api/admin/requests/:id', requireAdmin, async (req, res) => {
+  try {
+    const updates = {};
+    if (req.body.status !== undefined) updates.status = req.body.status;
+    await db.collection('requests').doc(req.params.id).update(updates);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/admin/requests/:id
+app.delete('/api/admin/requests/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.collection('requests').doc(req.params.id).delete();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/admin/transactions
+app.get('/api/admin/transactions', requireAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection('transactions').get();
+    const transactions = snap.docs.map(d => d.data());
+    transactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(transactions);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Global error handler ─────────────────────────────────────────────────────
 // Catches any unhandled async errors thrown in route handlers and returns JSON
 // instead of a raw 500 HTML page, so the frontend can display a readable message.
