@@ -1458,10 +1458,6 @@ function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
 function openRegisterModal() {
   openModal(`
     <h2>Join NekoPawz</h2>
-    <div style="background:var(--green-ghost);border:1px solid var(--green-pale);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:20px;font-size:.85rem;color:var(--green-deep);display:flex;gap:10px;align-items:flex-start">
-      <span style="font-size:1.1rem">🔒</span>
-      <span>Identity verification keeps the community safe. You'll receive <strong>1 free credit</strong> after verifying.</span>
-    </div>
     <button type="button" id="google-register-btn" class="btn-google full-width" style="margin-bottom:8px">
       <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" height="18" alt="" />
       Sign up with Google
@@ -1505,17 +1501,6 @@ function openRegisterModal() {
         <input type="text" id="r-building-name" placeholder="e.g. The Waverly, Sunrise Apartments" />
       </div>
       <div class="form-row">
-        <label>Government ID <span style="font-weight:400;color:var(--text-muted)">(for verification)</span></label>
-        <select id="r-id-type" style="margin-bottom:8px">
-          <option value="">Select ID type…</option>
-          <option value="drivers_license">Driver's license</option>
-          <option value="passport">Passport</option>
-          <option value="state_id">State ID</option>
-        </select>
-        <input type="text" id="r-id-number" placeholder="ID number" required />
-        <p style="font-size:.75rem;color:var(--text-muted);margin-top:5px">🔐 Your ID is used only to verify identity and is never shared.</p>
-      </div>
-      <div class="form-row">
         <label>Date of birth <span style="font-weight:400;color:var(--text-muted)">(must be 18+)</span></label>
         <input type="date" id="r-dob" required />
         <p style="font-size:.75rem;color:var(--text-muted);margin-top:4px">You must be at least 18 years old to create an account.</p>
@@ -1531,7 +1516,7 @@ function openRegisterModal() {
         </label>
       </div>
       <div id="reg-error" class="error-msg hidden"></div>
-      <button type="submit" class="btn-primary full-width">Create account &amp; verify ID — get 1 free credit</button>
+      <button type="submit" class="btn-primary full-width">Create account — get 1 free credit</button>
       <p style="text-align:center;margin-top:16px;font-size:.85rem;color:var(--text-muted)">
         Already have an account? <a href="#" data-open="login-modal">Sign in →</a>
       </p>
