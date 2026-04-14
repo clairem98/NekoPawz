@@ -1960,7 +1960,7 @@ async function loadSettings() {
             <input type="hidden" id="s-lat"      value="${s.lat || ''}" />
             <input type="hidden" id="s-lng"      value="${s.lng || ''}" />
           </div>
-          <button class="btn-primary" onclick="saveSettings()">Save profile</button>
+          <button class="btn-primary" onclick="saveSettings(event)">Save profile</button>
         </div>
       </div>
       <div class="settings-section">
@@ -1994,7 +1994,7 @@ async function loadSettings() {
             </div>
             <label class="toggle"><input type="checkbox" id="s-notif-browser" ${s.notif_browser ? 'checked' : ''} onchange="handleBrowserNotifToggle(this)" /><span class="toggle-track"></span></label>
           </div>
-          <button class="btn-primary" style="margin-top:8px" onclick="saveSettings()">Save notifications</button>
+          <button class="btn-primary" style="margin-top:8px" onclick="saveSettings(event)">Save notifications</button>
         </div>
       </div>
       <div class="settings-section">
@@ -2013,7 +2013,7 @@ async function loadSettings() {
             <label>Relationship</label>
             <input type="text" id="s-ec-relation" value="${s.ec_relation || ''}" placeholder="Partner, parent, friend…" />
           </div>
-          <button class="btn-primary" onclick="saveSettings()">Save emergency contact</button>
+          <button class="btn-primary" onclick="saveSettings(event)">Save emergency contact</button>
         </div>
       </div>
     `;
@@ -2041,7 +2041,8 @@ async function uploadAvatar(input) {
   } catch (e) { alert('Upload failed: ' + e.message); }
 }
 
-async function saveSettings() {
+async function saveSettings(event) {
+  const btn = event?.target;          // capture before any await — event is gone after
   const addrInput = document.getElementById('s-address');
   // Only validate if the user actually changed the address
   if (addrInput?.dataset.dirty === 'true') {
@@ -2076,10 +2077,11 @@ async function saveSettings() {
     await api('PUT', '/api/settings', body);
     currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
     updateNavCredits();
-    const btn = event.target;
-    const orig = btn.textContent;
-    btn.textContent = '✅ Saved!'; btn.disabled = true;
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✅ Saved!'; btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+    }
   } catch (e) { alert(e.message); }
 }
 
