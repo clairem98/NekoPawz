@@ -740,10 +740,102 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.add('hidden');
 }
 
+// ── Google Sign-In ─────────────────────────────────────────────────────────
+async function signInWithGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  let cred;
+  try {
+    cred = await firebase.auth().signInWithPopup(provider);
+  } catch (ex) {
+    return { error: ex.message };
+  }
+  // Check if this Google user already has a backend profile
+  try {
+    currentUser = await api('GET', '/api/me');
+    closeModal();
+    showApp();
+    navigate('dashboard');
+  } catch {
+    // New Google user — collect missing profile fields
+    openCompleteProfileModal(cred.user.displayName || '');
+  }
+}
+
+function openCompleteProfileModal(prefillName) {
+  openModal(`
+    <h2>Almost there!</h2>
+    <p style="color:var(--text-muted);margin-bottom:20px;font-size:.9rem">We just need a few more details to set up your NekoPawz profile.</p>
+    <form id="cp-form" class="form-card" style="padding:0;border:none;box-shadow:none">
+      <div class="form-row">
+        <label>Full name</label>
+        <input type="text" id="cp-name" value="${prefillName}" placeholder="Jane Smith" required />
+      </div>
+      <div class="form-row">
+        <label>Address</label>
+        <input type="text" id="cp-address" placeholder="123 Main St, City, State" required />
+      </div>
+      <div class="form-row">
+        <label>Building / complex name <span style="color:var(--text-muted)">(optional)</span></label>
+        <input type="text" id="cp-building-name" placeholder="The Pines Apartments" />
+      </div>
+      <div class="form-row">
+        <label>Unit <span style="color:var(--text-muted)">(optional)</span></label>
+        <input type="text" id="cp-unit" placeholder="4B" />
+      </div>
+      <div class="form-row">
+        <label>Date of birth <span style="color:var(--text-muted)">(must be 18+)</span></label>
+        <input type="date" id="cp-dob" required />
+        <small style="color:var(--text-muted)">You must be at least 18 years old to create an account.</small>
+      </div>
+      <div class="form-row">
+        <label class="tos-label">
+          <input type="checkbox" id="cp-tos" />
+          I have read and agree to the <a href="#" onclick="openTosModal();return false">Terms of Service</a>. I understand that NekoPawz is a neighbor-to-neighbor exchange platform and is not liable for any damages, injuries, losses, or incidents arising from pet care arrangements made through this platform.
+        </label>
+      </div>
+      <div id="cp-error" class="error-msg hidden"></div>
+      <button type="submit" class="btn-primary full-width">Complete sign-up</button>
+    </form>
+  `);
+
+  document.getElementById('cp-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const err = document.getElementById('cp-error');
+    const address = document.getElementById('cp-address').value;
+    const dob = document.getElementById('cp-dob').value;
+    if (!dob) { err.textContent = 'Please enter your date of birth.'; err.classList.remove('hidden'); return; }
+    const ageYears = (Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    if (ageYears < 18) { err.textContent = 'You must be at least 18 years old.'; err.classList.remove('hidden'); return; }
+    if (!document.getElementById('cp-tos').checked) { err.textContent = 'You must agree to the Terms of Service.'; err.classList.remove('hidden'); return; }
+    try {
+      await api('POST', '/api/register', {
+        name: document.getElementById('cp-name').value,
+        building: address,
+        building_name: document.getElementById('cp-building-name').value,
+        address,
+        unit: document.getElementById('cp-unit').value,
+        dob
+      });
+      currentUser = await api('GET', '/api/me');
+      closeModal();
+      showApp();
+      navigate('dashboard');
+    } catch (ex) {
+      err.textContent = ex.message;
+      err.classList.remove('hidden');
+    }
+  });
+}
+
 function openLoginModal() {
   openModal(`
     <h2>Welcome back</h2>
     <form id="login-form" class="form-card" style="padding:0;border:none;box-shadow:none">
+      <button type="button" id="google-signin-btn" class="btn-google full-width">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" height="18" alt="" />
+        Continue with Google
+      </button>
+      <div class="auth-divider"><span>or</span></div>
       <div class="form-row">
         <label>Email</label>
         <input type="email" id="l-email" placeholder="you@email.com" required />
@@ -759,6 +851,13 @@ function openLoginModal() {
       </p>
     </form>
   `);
+  document.getElementById('google-signin-btn').addEventListener('click', async () => {
+    const result = await signInWithGoogle();
+    if (result?.error) {
+      const err = document.getElementById('login-error');
+      if (err) { err.textContent = result.error; err.classList.remove('hidden'); }
+    }
+  });
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const err = document.getElementById('login-error');
@@ -785,6 +884,11 @@ function openRegisterModal() {
       <span style="font-size:1.1rem">🔒</span>
       <span>Identity verification keeps the community safe. You'll receive <strong>1 free credit</strong> after verifying.</span>
     </div>
+    <button type="button" id="google-register-btn" class="btn-google full-width" style="margin-bottom:8px">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="18" height="18" alt="" />
+      Sign up with Google
+    </button>
+    <div class="auth-divider"><span>or sign up with email</span></div>
     <form id="reg-form" class="form-card" style="padding:0;border:none;box-shadow:none">
       <div class="form-row">
         <label>Full name</label>
@@ -943,6 +1047,8 @@ function openRegisterModal() {
       suggestionsBox.classList.add('hidden');
     }
   }, { once: false });
+
+  document.getElementById('google-register-btn').addEventListener('click', () => signInWithGoogle());
 
   document.getElementById('reg-form').addEventListener('submit', async e => {
     e.preventDefault();
