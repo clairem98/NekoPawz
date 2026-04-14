@@ -441,37 +441,88 @@ nav {
   padding: 10px 14px; border-radius: var(--radius-sm); margin-bottom: 14px;
 }
 
-/* ─── PROFILE ─────────────────────────────────────────────────────────── */
-.profile-card {
+/* ─── PROFILE HERO ────────────────────────────────────────────────────── */
+.profile-hero {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 28px; display: flex; gap: 22px; align-items: center;
-  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius); padding: 32px 24px 28px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  box-shadow: var(--shadow-sm); gap: 0;
 }
-.profile-avatar-wrap { flex-shrink: 0; position: relative; }
-.profile-avatar-wrap--edit {
+.profile-hero-avatar-btn {
   background: none; border: none; padding: 0; cursor: pointer;
-  position: relative; flex-shrink: 0;
-  border-radius: 50%;
+  position: relative; border-radius: 50%; flex-shrink: 0; margin-bottom: 14px;
 }
-.profile-avatar-wrap--edit:hover .profile-avatar-edit-overlay { opacity: 1; }
+.profile-hero-avatar-btn:hover .profile-hero-camera { opacity: 1; }
+.profile-hero-avatar {
+  width: 96px; height: 96px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--green-mid), var(--green-deep));
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif; font-size: 2.4rem; font-weight: 700;
+  box-shadow: 0 6px 18px rgba(45,106,79,.3); flex-shrink: 0;
+}
+.profile-hero-avatar-img {
+  width: 96px; height: 96px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+  box-shadow: 0 6px 18px rgba(45,106,79,.25);
+}
+.profile-hero-camera {
+  position: absolute; bottom: 2px; right: 2px;
+  background: var(--surface); border: 1.5px solid var(--border);
+  border-radius: 50%; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; box-shadow: var(--shadow-sm);
+  pointer-events: none; opacity: 0.85; transition: opacity .15s;
+}
+.profile-hero-info { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.profile-hero-name { font-size: 1.35rem; font-weight: 700; font-family: 'Fraunces', serif; color: var(--text); }
+.profile-hero-sub { font-size: .85rem; color: var(--text-muted); }
+.profile-hero-bio { font-size: .9rem; color: var(--text-mid); margin-top: 6px; max-width: 320px; line-height: 1.5; }
+.profile-hero-bio-prompt {
+  background: none; border: none; cursor: pointer;
+  font-size: .85rem; color: var(--green); font-weight: 500; margin-top: 6px;
+  padding: 0;
+}
+.profile-hero-bio-prompt:hover { text-decoration: underline; }
+.profile-hero-edit-btn { margin-top: 16px; }
+
+/* ─── PROFILE STATS STRIP ────────────────────────────────────────────── */
+.profile-stats-strip {
+  background: linear-gradient(135deg, var(--green-deep) 0%, var(--green-mid) 100%);
+  border-radius: var(--radius); margin-top: 14px;
+  padding: 20px 24px;
+  display: flex; align-items: center; justify-content: space-around;
+  box-shadow: var(--shadow-md);
+}
+.ps-stat { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.ps-num {
+  font-family: 'Fraunces', serif; font-size: 2rem; font-weight: 700;
+  line-height: 1; color: #fff;
+}
+.ps-label { font-size: .72rem; color: rgba(255,255,255,.65); text-transform: uppercase; letter-spacing: .06em; font-weight: 500; }
+.ps-divider { width: 1px; height: 40px; background: rgba(255,255,255,.2); }
+.ps-earned { color: #a7f3d0; }
+.ps-spent  { color: #fca5a5; }
+
+/* ─── SETTINGS AVATAR (used in Settings page) ────────────────────────── */
+.profile-avatar-wrap { flex-shrink: 0; position: relative; }
+.profile-avatar-edit-tap {
+  position: relative; cursor: pointer; border-radius: 50%; display: inline-block;
+}
 .profile-avatar-edit-overlay {
   position: absolute; bottom: 1px; right: 1px;
   background: var(--surface); border: 1.5px solid var(--border);
   border-radius: 50%; width: 24px; height: 24px;
   display: flex; align-items: center; justify-content: center;
   font-size: .65rem; box-shadow: var(--shadow-sm);
-  pointer-events: none; transition: opacity .15s;
-}
-.profile-avatar-edit-tap {
-  position: relative; cursor: pointer; border-radius: 50%; display: inline-block;
+  pointer-events: none; opacity: .85; transition: opacity .15s;
 }
 .profile-avatar-edit-tap:hover .profile-avatar-edit-overlay { opacity: 1; }
+/* Legacy profile-avatar used in modals / user-profile page */
 .profile-avatar {
   width: 72px; height: 72px; border-radius: 50%;
   background: linear-gradient(135deg, var(--green-mid), var(--green-deep));
   color: #fff; display: flex; align-items: center; justify-content: center;
-  font-family: 'Fraunces', serif;
-  font-size: 1.8rem; font-weight: 700; flex-shrink: 0;
+  font-family: 'Fraunces', serif; font-size: 1.8rem; font-weight: 700; flex-shrink: 0;
   box-shadow: 0 4px 12px rgba(45,106,79,.3);
 }
 .profile-avatar-img {
@@ -485,17 +536,60 @@ nav {
   color: #fff; display: flex; align-items: center; justify-content: center;
   font-size: 1.5rem; font-weight: 700; flex-shrink: 0;
 }
-.settings-avatar-img {
-  width: 64px; height: 64px; border-radius: 50%;
-  object-fit: cover; flex-shrink: 0;
-}
+.settings-avatar-img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .avatar-upload-row { display: flex; align-items: center; gap: 18px; padding-bottom: 8px; }
 .avatar-upload-preview { flex-shrink: 0; }
-.profile-info h2 { font-size: 1.25rem; font-weight: 700; }
-.profile-info p { color: var(--text-muted); font-size: .875rem; margin-top: 3px; }
-.profile-credits { margin-top: 10px; font-size: .9rem; }
-.profile-credits strong { color: var(--green-deep); font-size: 1.15rem; font-family: 'Fraunces', serif; }
 
+/* ─── PET CARDS (My Profile) ─────────────────────────────────────────── */
+.pets-empty {
+  background: var(--surface); border: 1px dashed var(--border);
+  border-radius: var(--radius); padding: 36px 24px;
+  text-align: center; color: var(--text-mid);
+}
+.pets-empty-icon { font-size: 2rem; margin-bottom: 8px; }
+.pet-card-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px;
+}
+.pet-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  box-shadow: var(--shadow-sm); transition: box-shadow .2s, border-color .2s;
+  position: relative; display: flex; flex-direction: column;
+}
+.pet-card:hover { box-shadow: var(--shadow); border-color: var(--green-light); }
+.pet-card-photo-wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; flex-shrink: 0; }
+.pet-card-photo {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.pet-card-photo--placeholder {
+  width: 100%; height: 100%;
+  background: var(--green-ghost); border-bottom: 1px solid var(--green-pale);
+  display: flex; align-items: center; justify-content: center; font-size: 3rem;
+}
+.pet-card-camera {
+  position: absolute; bottom: 8px; right: 8px;
+  background: rgba(255,255,255,.92); border: 1px solid var(--border);
+  border-radius: 50%; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .75rem; cursor: pointer; box-shadow: var(--shadow-sm);
+  transition: transform .15s; backdrop-filter: blur(4px);
+}
+.pet-card-camera:hover { transform: scale(1.12); }
+.pet-card-body { padding: 12px 14px; flex: 1; }
+.pet-card-name { font-weight: 700; font-size: .95rem; color: var(--text); }
+.pet-card-desc { font-size: .78rem; color: var(--text-muted); margin-top: 3px; }
+.pet-card-notes { font-size: .78rem; color: var(--text-mid); margin-top: 4px; font-style: italic; }
+.pet-card-delete {
+  position: absolute; top: 8px; right: 8px;
+  background: rgba(255,255,255,.88); border: 1px solid var(--border);
+  border-radius: 50%; width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .7rem; cursor: pointer; color: var(--text-muted);
+  box-shadow: var(--shadow-sm); transition: all .15s; backdrop-filter: blur(4px);
+}
+.pet-card-delete:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+
+/* ─── Legacy pet-item (used on other users' profiles) ────────────────── */
 .pet-item {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 14px 18px;
@@ -1085,30 +1179,15 @@ nav {
 .convo-title { font-size: .78rem; color: var(--text-muted); margin-bottom: 3px; }
 .convo-preview { font-size: .85rem; color: var(--text-mid); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ─── PROFILE CREDITS ────────────────────────────────────────────────── */
-.profile-credits-section { }
-.profile-credits-card {
-  background: linear-gradient(135deg, var(--green-deep) 0%, var(--green-mid) 100%);
-  border-radius: var(--radius);
-  padding: 24px 28px;
-  display: flex; align-items: center; justify-content: space-between; gap: 24px;
-  box-shadow: var(--shadow-md);
-}
-.pcredit-balance { color: #fff; }
-.pcredit-num {
-  font-family: 'Fraunces', serif;
-  font-size: 3rem; font-weight: 700; line-height: 1; letter-spacing: -.02em;
-}
-.pcredit-label { font-size: .85rem; color: rgba(255,255,255,.7); margin-top: 4px; font-weight: 500; }
-.pcredit-stats { display: flex; align-items: center; gap: 0; }
-.pcredit-stat { display: flex; flex-direction: column; align-items: center; padding: 0 20px; }
-.pcredit-stat-val { font-size: 1.4rem; font-weight: 700; font-family: 'Fraunces', serif; line-height: 1.1; }
-.pcredit-stat-key { font-size: .75rem; color: rgba(255,255,255,.65); margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; }
-.pcredit-earned { color: #a7f3d0; }
-.pcredit-spent  { color: #fca5a5; }
-.pcredit-divider { width: 1px; height: 36px; background: rgba(255,255,255,.2); }
+/* (old .profile-credits-card replaced by .profile-stats-strip above) */
 
-/* Credit history list */
+/* ─── CREDIT HISTORY LIST ────────────────────────────────────────────── */
+.ch-empty {
+  background: var(--surface); border: 1px dashed var(--border);
+  border-radius: var(--radius); padding: 36px 24px;
+  text-align: center; color: var(--text-mid);
+}
+.ch-empty-icon { font-size: 2rem; margin-bottom: 8px; }
 .credit-history-list {
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden;
@@ -1122,18 +1201,23 @@ nav {
 .ch-item:last-child { border-bottom: none; }
 .ch-item:hover { background: var(--surface-2); }
 .ch-icon {
-  width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
-  background: var(--green-ghost); border: 1px solid var(--green-pale);
-  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
 }
+.ch-icon--earned { background: var(--green-ghost); border: 1px solid var(--green-pale); }
+.ch-icon--spent  { background: #fff7ed; border: 1px solid #fed7aa; }
 .ch-body { flex: 1; min-width: 0; }
 .ch-label { font-size: .875rem; font-weight: 600; color: var(--text); }
-.ch-sub { font-size: .78rem; color: var(--text-muted); margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ch-date { font-size: .72rem; color: var(--text-muted); margin-top: 3px; }
+.ch-sub {
+  font-size: .78rem; color: var(--text-muted); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ch-date { font-size: .72rem; color: var(--text-muted); margin-top: 3px; display: flex; gap: 6px; align-items: center; }
+.ch-date-full { font-weight: 500; }
+.ch-date-ago::before { content: '·'; margin-right: 6px; }
 .ch-badge {
-  flex-shrink: 0; font-size: .82rem; font-weight: 700;
-  padding: 4px 10px; border-radius: 99px; white-space: nowrap;
+  flex-shrink: 0; font-size: .85rem; font-weight: 700;
+  padding: 5px 12px; border-radius: 99px; white-space: nowrap;
 }
 .ch-earned { background: var(--green-pale); color: var(--green-deep); }
 .ch-spent  { background: #fee2e2; color: #b91c1c; }

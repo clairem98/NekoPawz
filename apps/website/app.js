@@ -327,6 +327,12 @@ async function loadNewRequestPage(directedTo = null) {
 }
 
 // ── Profile ────────────────────────────────────────────────────────────────
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 async function loadProfile() {
   try {
     const [me, activity] = await Promise.all([
@@ -336,61 +342,71 @@ async function loadProfile() {
     currentUser = me;
     updateNavCredits();
 
-    // Profile card
-    document.getElementById('profile-card').innerHTML = `
-      <button class="profile-avatar-wrap profile-avatar-wrap--edit" onclick="openEditProfileModal()" title="Edit profile" aria-label="Edit profile">
-        ${avatarHtml(me.name, me.avatar_url, 'profile-avatar')}
-        <span class="profile-avatar-edit-overlay">✏️</span>
+    // ── Hero ────────────────────────────────────────────────────────────
+    document.getElementById('profile-hero').innerHTML = `
+      <button class="profile-hero-avatar-btn" onclick="openEditProfileModal()"
+              title="Edit profile" aria-label="Edit profile">
+        ${avatarHtml(me.name, me.avatar_url, 'profile-hero-avatar')}
+        <span class="profile-hero-camera">📷</span>
       </button>
-      <div class="profile-info">
-        <h2>${me.name}</h2>
-        <p>${me.unit ? 'Unit ' + me.unit + ' · ' : ''}${me.building_name || me.building}</p>
-        ${me.bio ? `<p style="margin-top:6px;color:var(--text)">${me.bio}</p>` : `<p style="margin-top:4px;font-size:.82rem;color:var(--text-muted)">Tap your photo to add a bio</p>`}
+      <div class="profile-hero-info">
+        <h2 class="profile-hero-name">${me.name}</h2>
+        <p class="profile-hero-sub">
+          ${[me.unit ? 'Unit ' + me.unit : '', me.building_name || me.building].filter(Boolean).join(' · ')}
+        </p>
+        ${me.bio
+          ? `<p class="profile-hero-bio">${me.bio}</p>`
+          : `<button class="profile-hero-bio-prompt" onclick="openEditProfileModal()">+ Add a bio</button>`}
       </div>
+      <button class="btn-outline btn-sm profile-hero-edit-btn" onclick="openEditProfileModal()">Edit profile</button>
     `;
 
-    // Credits summary card
-    const earned = activity.filter(t => t.to_user_id === me.id).reduce((s, t) => s + t.credits, 0);
+    // ── Stats strip ─────────────────────────────────────────────────────
+    const earned = activity.filter(t => t.to_user_id   === me.id).reduce((s, t) => s + t.credits, 0);
     const spent  = activity.filter(t => t.from_user_id === me.id).reduce((s, t) => s + t.credits, 0);
-    document.getElementById('profile-credits-card').innerHTML = `
-      <div class="pcredit-balance">
-        <div class="pcredit-num">${me.credits}</div>
-        <div class="pcredit-label">credits available</div>
+    document.getElementById('profile-stats').innerHTML = `
+      <div class="ps-stat">
+        <div class="ps-num">${me.credits}</div>
+        <div class="ps-label">available</div>
       </div>
-      <div class="pcredit-stats">
-        <div class="pcredit-stat">
-          <span class="pcredit-stat-val pcredit-earned">+${earned}</span>
-          <span class="pcredit-stat-key">earned</span>
-        </div>
-        <div class="pcredit-divider"></div>
-        <div class="pcredit-stat">
-          <span class="pcredit-stat-val pcredit-spent">−${spent}</span>
-          <span class="pcredit-stat-key">spent</span>
-        </div>
+      <div class="ps-divider"></div>
+      <div class="ps-stat">
+        <div class="ps-num ps-earned">+${earned}</div>
+        <div class="ps-label">earned</div>
+      </div>
+      <div class="ps-divider"></div>
+      <div class="ps-stat">
+        <div class="ps-num ps-spent">−${spent}</div>
+        <div class="ps-label">spent</div>
       </div>
     `;
 
-    // Credit history
+    // ── Credit history ───────────────────────────────────────────────────
     const histEl = document.getElementById('profile-credit-history');
     if (!activity.length) {
-      histEl.innerHTML = '<p class="empty" style="padding:24px 0">No credit transactions yet.</p>';
+      histEl.innerHTML = `
+        <div class="ch-empty">
+          <div class="ch-empty-icon">🐾</div>
+          <p>No credit history yet.</p>
+          <p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Credits appear here when you give or receive help.</p>
+        </div>`;
     } else {
       histEl.innerHTML = `
         <div class="credit-history-list">
           ${activity.map(t => {
             const isEarned = t.to_user_id === me.id;
-            const other = isEarned ? t.from_name : t.to_name;
-            const label = isEarned
-              ? `Earned from ${other}`
-              : `Spent on care for ${other}`;
-            const icon  = isEarned ? petEmoji(t.request_type || 'other') : '🐾';
+            const other    = isEarned ? t.from_name : t.to_name;
+            const label    = isEarned ? `Helped ${other}` : `Care from ${other}`;
+            const icon     = isEarned ? petEmoji(t.request_type || 'other') : '🐾';
+            const dateStr  = formatDate(t.created_at);
+            const agoStr   = timeAgo(t.created_at);
             return `
               <div class="ch-item">
-                <div class="ch-icon">${icon}</div>
+                <div class="ch-icon ${isEarned ? 'ch-icon--earned' : 'ch-icon--spent'}">${icon}</div>
                 <div class="ch-body">
                   <div class="ch-label">${label}</div>
                   ${t.request_title ? `<div class="ch-sub">${t.request_title}</div>` : ''}
-                  <div class="ch-date">${timeAgo(t.created_at)}</div>
+                  <div class="ch-date"><span class="ch-date-full">${dateStr}</span><span class="ch-date-ago">${agoStr}</span></div>
                 </div>
                 <div class="ch-badge ${isEarned ? 'ch-earned' : 'ch-spent'}">
                   ${isEarned ? '+' : '−'}${t.credits} cr
@@ -474,29 +490,32 @@ async function saveProfileEdit() {
 function renderPets(pets) {
   const list = document.getElementById('pets-list');
   if (!pets.length) {
-    list.innerHTML = '<p style="color:var(--text-muted);font-size:.9rem">No pets added yet.</p>';
+    list.innerHTML = `
+      <div class="pets-empty">
+        <div class="pets-empty-icon">🐾</div>
+        <p>No pets added yet.</p>
+        <p style="font-size:.82rem;color:var(--text-muted);margin-top:4px">Add your pet so neighbors know who they'll be caring for.</p>
+      </div>`;
     return;
   }
-  list.innerHTML = pets.map(p => `
-    <div class="pet-item" id="pet-item-${p.id}">
-      <div class="pet-photo-wrap">
+  list.innerHTML = `<div class="pet-card-grid">${pets.map(p => `
+    <div class="pet-card" id="pet-item-${p.id}">
+      <div class="pet-card-photo-wrap">
         ${p.photo_url
-          ? `<img src="${p.photo_url}" class="pet-photo" alt="${p.name}" />`
-          : `<div class="pet-photo pet-photo-placeholder">${petEmoji(p.type)}</div>`}
-        <label class="pet-photo-upload-btn" title="Change photo" for="pet-photo-${p.id}">📷</label>
+          ? `<img src="${p.photo_url}" class="pet-card-photo" alt="${p.name}" />`
+          : `<div class="pet-card-photo pet-card-photo--placeholder">${petEmoji(p.type)}</div>`}
+        <label class="pet-card-camera" title="Change photo" for="pet-photo-${p.id}">📷</label>
         <input type="file" id="pet-photo-${p.id}" accept="image/jpeg,image/png,image/gif,image/webp"
           style="display:none" onchange="uploadPetPhoto('${p.id}', this)" />
       </div>
-      <div class="pet-info">
-        <div>
-          <div class="pet-name">${p.name}</div>
-          <div class="pet-desc">${[p.type, p.breed, p.age ? p.age + ' yrs' : ''].filter(Boolean).join(' · ')}</div>
-          ${p.notes ? `<div class="pet-desc">${p.notes}</div>` : ''}
-        </div>
+      <div class="pet-card-body">
+        <div class="pet-card-name">${p.name}</div>
+        <div class="pet-card-desc">${[p.type, p.breed, p.age ? p.age + ' yrs' : ''].filter(Boolean).join(' · ')}</div>
+        ${p.notes ? `<div class="pet-card-notes">${p.notes}</div>` : ''}
       </div>
-      <button class="delete-btn" onclick="deletePet('${p.id}')">✕</button>
+      <button class="pet-card-delete" onclick="deletePet('${p.id}')" title="Remove pet">✕</button>
     </div>
-  `).join('');
+  `).join('')}</div>`;
 }
 
 async function uploadPetPhoto(petId, input) {
@@ -513,12 +532,20 @@ async function uploadPetPhoto(petId, input) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     // Update photo in-place without full re-render
-    const wrap = document.querySelector(`#pet-item-${petId} .pet-photo-wrap`);
+    const wrap = document.querySelector(`#pet-item-${petId} .pet-card-photo-wrap`);
     if (wrap) {
-      const existing = wrap.querySelector('.pet-photo');
+      const existing = wrap.querySelector('.pet-card-photo');
       if (existing) {
-        existing.src = data.photo_url;
-        existing.classList.remove('pet-photo-placeholder');
+        if (existing.tagName === 'IMG') {
+          existing.src = data.photo_url;
+        } else {
+          // Replace placeholder div with an img
+          const img = document.createElement('img');
+          img.src = data.photo_url;
+          img.className = 'pet-card-photo';
+          img.alt = existing.textContent;
+          existing.replaceWith(img);
+        }
       }
     }
     currentUser = await api('GET', '/api/me');
