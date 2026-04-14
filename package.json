@@ -1,0 +1,12 @@
+{
+  "name": "nekopawz",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "start": "npm run start --workspace=apps/server",
+    "dev":   "npm run start --workspace=apps/server"
+  }
+}

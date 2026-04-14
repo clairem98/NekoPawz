@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NekoPawz — Neighbor Pet Care Exchange</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="navbar" class="hidden">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo" data-page="dashboard">🐾 NekoPawz</a>
+    <div class="nav-links">
+      <a href="#" data-page="dashboard">Home</a>
+      <a href="#" data-page="browse">Browse Requests</a>
+      <a href="#" data-page="new-request">Post Request</a>
+      <a href="#" data-page="messages">Messages</a>
+      <a href="#" data-page="neighbors">Neighbors</a>
+      <a href="#" data-page="profile">My Profile</a>
+    </div>
+    <div class="nav-credits" id="nav-credits"></div>
+    <div class="nav-bell" id="nav-bell">
+      <button class="bell-btn" id="bell-btn" title="Notifications">🔔<span class="bell-badge hidden" id="bell-badge"></span></button>
+      <div class="bell-dropdown hidden" id="bell-dropdown"></div>
+    </div>
+    <div class="nav-gear" id="nav-gear">
+      <button class="btn-ghost" id="gear-btn" title="Settings" onclick="toggleGearMenu()">⚙️</button>
+      <div class="gear-dropdown hidden" id="gear-dropdown">
+        <button class="gear-item" onclick="closeGearMenu(); navigate('settings')">⚙️ &nbsp;Settings</button>
+        <button class="gear-item" onclick="closeGearMenu(); navigate('contact')">✉️ &nbsp;Contact us</button>
+        <div class="gear-divider"></div>
+        <button class="gear-item gear-item-danger" id="gear-logout-btn">↩ &nbsp;Log out</button>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- PAGES -->
+<div id="app">
+
+  <!-- LANDING -->
+  <div id="page-landing" class="page">
+    <div class="hero">
+      <div class="hero-text">
+        <div class="hero-badge">🏢 Neighbor-powered pet care</div>
+        <h1>Your neighbors<br>love pets <em>too.</em></h1>
+        <p>NekoPawz is a credit-based pet care exchange for your building or neighborhood. Walk a neighbor's dog, earn a credit. Spend that credit when you need help with your own pet.</p>
+        <div class="hero-cta">
+          <button class="btn-primary btn-lg" data-open="register-modal">Get started</button>
+          <button class="btn-outline btn-lg" data-open="login-modal">Sign in</button>
+        </div>
+        <div class="landing-contact-link">
+          Have a question? <a href="#" onclick="navigatePublic('contact');return false">Contact us</a>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="credit-flow">
+          <div class="flow-card">
+            <div class="flow-card-icon dog">🐕</div>
+            <div class="flow-card-text">
+              <strong>Walk next door's dog</strong>
+              <span>30 minutes, Tuesday morning</span>
+            </div>
+            <span class="flow-badge earn">+1 credit</span>
+          </div>
+          <div class="flow-connector">YOUR BALANCE GROWS</div>
+          <div class="flow-card">
+            <div class="flow-card-icon cat">🐱</div>
+            <div class="flow-card-text">
+              <strong>Weekend trip coming up?</strong>
+              <span>Cat check-in while you're away</span>
+            </div>
+            <span class="flow-badge spend">−1 credit</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="how-it-works">
+      <div class="section-center">
+        <h2>Simple as it gets</h2>
+        <p class="section-sub">No gig workers. No platform fees. Just neighbors who get it.</p>
+        <div class="steps">
+          <div class="step">
+            <div class="step-num">1</div>
+            <h3>Verify &amp; join your community</h3>
+            <p>Sign up with your address. Verify your ID to keep the community trusted. You get 1 free credit to start.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <h3>Help a neighbor</h3>
+            <p>Browse open requests nearby — dog walks, cat check-ins, and more. Filter by your building or expand to your neighborhood.</p>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <h3>One credit in, one credit out</h3>
+            <p>Every service costs exactly 1 credit and earns exactly 1 credit. Fair for everyone.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="why-section">
+      <h2>Why us?</h2>
+      <p class="section-sub">Good question. Here's what's different about NekoPawz.</p>
+      <div class="why-grid">
+        <div class="why-card">
+          <div class="why-icon">🏢</div>
+          <h3>Nearby neighbors, no key handoffs</h3>
+          <p>Your helper lives nearby — in your building or just down the street. No buzzing strangers in.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-icon">💸</div>
+          <h3>Zero fees, forever</h3>
+          <p>Other pet care platforms charge up to 38% in combined fees. NekoPawz is free — neighbors helping neighbors, nothing more.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-icon">🐾</div>
+          <h3>Fellow pet owners only</h3>
+          <p>Everyone on NekoPawz has pets. They understand the responsibility — this isn't a gig side hustle.</p>
+        </div>
+        <div class="why-card">
+          <div class="why-icon">⚖️</div>
+          <h3>Perfectly balanced</h3>
+          <p>1 credit in, 1 credit out. The more you contribute, the more you can call on your community.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="page-dashboard" class="page hidden">
+    <div class="page-content">
+      <div id="dashboard-greeting" class="greeting"></div>
+      <div class="dashboard-grid">
+        <div class="dash-card credits-card" id="credits-display">
+          <div class="credits-num" id="credits-num">—</div>
+          <div class="credits-label">credits available</div>
+        </div>
+        <div class="dash-card quick-card">
+          <h3>Quick actions</h3>
+          <button class="btn-primary full-width" data-page="new-request">Post a request</button>
+          <button class="btn-outline full-width mt-s" data-page="browse">Help a neighbor</button>
+        </div>
+        <div class="dash-card activity-card">
+          <h3>Recent activity</h3>
+          <div id="activity-list"><div class="loading">Loading…</div></div>
+        </div>
+      </div>
+      <div id="dashboard-reminders"></div>
+      <div class="section-header">
+        <h2>Open requests nearby</h2>
+        <a href="#" data-page="browse">View all →</a>
+      </div>
+      <div id="dashboard-requests" class="request-grid"></div>
+    </div>
+  </div>
+
+  <!-- BROWSE -->
+  <div id="page-browse" class="page hidden">
+    <div class="page-content">
+      <div class="browse-header">
+        <h1>Open requests</h1>
+        <p class="sub" style="margin:4px 0 20px">Neighbors in your building or nearby who need a hand</p>
+        <div class="filter-panel">
+          <div class="filter-row">
+            <span class="filter-label">Type</span>
+            <div class="filters">
+              <button class="filter-btn active" data-filter-type="type" data-filter="all">All</button>
+              <button class="filter-btn" data-filter-type="type" data-filter="dog_walk">🐕 Dog walk</button>
+              <button class="filter-btn" data-filter-type="type" data-filter="cat_checkin">🐱 Cat check-in</button>
+              <button class="filter-btn" data-filter-type="type" data-filter="other">🐾 Other</button>
+            </div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">When</span>
+            <div class="filters">
+              <button class="filter-btn active" data-filter-type="date" data-filter="all">Any time</button>
+              <button class="filter-btn" data-filter-type="date" data-filter="today">Today</button>
+              <button class="filter-btn" data-filter-type="date" data-filter="tomorrow">Tomorrow</button>
+              <button class="filter-btn" data-filter-type="date" data-filter="week">This week</button>
+              <button class="filter-btn" data-filter-type="date" data-filter="weekend">This weekend</button>
+            </div>
+          </div>
+          <div class="filter-row">
+            <span class="filter-label">Distance</span>
+            <div class="filters">
+              <button class="filter-btn active" data-filter-type="location" data-filter="building">🏢 My building only</button>
+              <button class="filter-btn" data-filter-type="location" data-filter="0.25">¼ mile</button>
+              <button class="filter-btn" data-filter-type="location" data-filter="0.5">½ mile</button>
+              <button class="filter-btn" data-filter-type="location" data-filter="1">1 mile</button>
+              <button class="filter-btn" data-filter-type="location" data-filter="2">2 miles</button>
+            </div>
+            <span class="filter-note">📍 Exact unit revealed after confirmation</span>
+          </div>
+        </div>
+      </div>
+      <div id="browse-count" class="browse-count"></div>
+      <div id="browse-requests" class="request-grid"></div>
+    </div>
+  </div>
+
+  <!-- NEW REQUEST -->
+  <div id="page-new-request" class="page hidden">
+    <div class="page-content narrow">
+      <h1 id="new-request-heading">Post a request</h1>
+      <div id="req-recipient-card" class="recipient-card hidden"></div>
+      <form id="new-request-form" class="form-card">
+        <div class="form-row">
+          <label>Who can help?</label>
+          <div id="req-recipient-picker">
+            <div class="recipient-toggle">
+              <button type="button" class="recipient-opt active" id="recip-anyone-btn" onclick="setRecipient(null)">Anyone nearby</button>
+              <button type="button" class="recipient-opt" id="recip-specific-btn" onclick="toggleNeighborPicker()">A specific neighbor ▾</button>
+            </div>
+            <div id="neighbor-picker-list" class="neighbor-picker-list hidden"></div>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Type of help</label>
+          <div class="type-buttons">
+            <button type="button" class="type-btn active" data-type="dog_walk">🐕 Dog walk</button>
+            <button type="button" class="type-btn" data-type="cat_checkin">🐱 Cat check-in</button>
+            <button type="button" class="type-btn" data-type="other">🐾 Other</button>
+          </div>
+          <input type="hidden" id="req-type" value="dog_walk" />
+        </div>
+        <div class="form-row">
+          <label for="req-title">Title</label>
+          <input type="text" id="req-title" placeholder="e.g. 30-min dog walk Tuesday morning" required />
+        </div>
+        <div class="form-row">
+          <label>Which pet(s)?</label>
+          <div id="req-pets-list" class="pets-checklist"></div>
+        </div>
+        <div class="form-row">
+          <label for="req-date">Date needed</label>
+          <input type="date" id="req-date" required />
+        </div>
+        <div class="form-row">
+          <label for="req-time">Time window</label>
+          <select id="req-time">
+            <option value="">Flexible / any time</option>
+            <optgroup label="Morning">
+              <option value="Early morning (6–8am)">Early morning (6–8am)</option>
+              <option value="Morning (8–10am)">Morning (8–10am)</option>
+              <option value="Mid-morning (9–11am)">Mid-morning (9–11am)</option>
+              <option value="Late morning (10am–12pm)">Late morning (10am–12pm)</option>
+            </optgroup>
+            <optgroup label="Afternoon">
+              <option value="Lunch (12–1pm)">Lunch (12–1pm)</option>
+              <option value="Early afternoon (1–3pm)">Early afternoon (1–3pm)</option>
+              <option value="Afternoon (3–5pm)">Afternoon (3–5pm)</option>
+              <option value="Late afternoon (4–6pm)">Late afternoon (4–6pm)</option>
+            </optgroup>
+            <optgroup label="Evening">
+              <option value="Evening (6–8pm)">Evening (6–8pm)</option>
+              <option value="Late evening (8–10pm)">Late evening (8–10pm)</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="req-duration">Duration</label>
+          <select id="req-duration">
+            <option value="">Flexible / unspecified</option>
+            <option value="15 minutes">15 minutes</option>
+            <option value="20 minutes">20 minutes</option>
+            <option value="30 minutes">30 minutes</option>
+            <option value="45 minutes">45 minutes</option>
+            <option value="1 hour">1 hour</option>
+            <option value="1.5 hours">1.5 hours</option>
+            <option value="2 hours">2 hours</option>
+            <option value="Half day (4 hours)">Half day (4 hours)</option>
+            <option value="Full day">Full day</option>
+            <option value="Overnight">Overnight</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label for="req-credits">Credits to offer</label>
+          <div class="credit-input-wrap">
+            <div class="credit-stepper">
+              <button type="button" class="stepper-btn" id="credits-minus">−</button>
+              <span id="req-credits-display">1</span>
+              <button type="button" class="stepper-btn" id="credits-plus">+</button>
+              <input type="hidden" id="req-credits" value="1" />
+            </div>
+            <span class="credit-hint">You have <strong id="hint-credits">—</strong> credits available</span>
+          </div>
+          <p style="font-size:.78rem;color:var(--text-muted);margin-top:6px">Offer more credits for longer or more complex services.</p>
+        </div>
+        <div class="form-row">
+          <label for="req-desc">Additional notes</label>
+          <textarea id="req-desc" rows="3" placeholder="Any details your helper should know…"></textarea>
+        </div>
+        <input type="hidden" id="req-directed-to" value="" />
+        <div id="req-error" class="error-msg hidden"></div>
+        <button type="submit" class="btn-primary full-width" id="req-submit-btn">Post request</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MY REQUESTS -->
+  <div id="page-my-requests" class="page hidden">
+    <div class="page-content">
+      <h1 style="font-family:'Fraunces',serif;font-size:2rem;color:var(--green-deep);margin-bottom:24px">My requests</h1>
+      <div class="tab-bar">
+        <button class="tab active" data-tab="posted">Posted by me</button>
+        <button class="tab" data-tab="helping">I'm helping</button>
+      </div>
+      <div id="my-requests-list" class="request-grid"></div>
+    </div>
+  </div>
+
+  <!-- NEIGHBORS -->
+  <div id="page-neighbors" class="page hidden">
+    <div class="page-content">
+      <h1 style="font-family:'Fraunces',serif;font-size:2rem;color:var(--green-deep);margin-bottom:8px">Your neighbors</h1>
+      <p class="sub">NekoPawz members in your building and nearby neighborhood.</p>
+      <div id="neighbors-grid" class="neighbor-grid"></div>
+    </div>
+  </div>
+
+  <!-- PROFILE -->
+  <div id="page-profile" class="page hidden">
+    <div class="page-content narrow">
+      <h1>My profile</h1>
+      <div class="profile-card" id="profile-card"></div>
+
+      <!-- Credits summary -->
+      <div class="profile-credits-section mt-m">
+        <div class="profile-credits-card" id="profile-credits-card"></div>
+      </div>
+
+      <!-- Credit history -->
+      <div class="section-header mt-m">
+        <h2>Credit history</h2>
+      </div>
+      <div id="profile-credit-history"></div>
+
+      <div class="section-header mt-m">
+        <h2>My pets</h2>
+        <button class="btn-outline btn-sm" id="add-pet-btn">+ Add pet</button>
+      </div>
+      <div id="pets-list"></div>
+      <div class="section-header mt-m">
+        <h2>My requests</h2>
+        <a href="#" data-page="my-requests">View all →</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- REQUEST DETAIL -->
+  <div id="page-request-detail" class="page hidden">
+    <div class="page-content narrow">
+      <div id="request-detail-content"></div>
+      <div id="chat-section" class="hidden">
+        <div class="chat-header">
+          <h3>Messages</h3>
+          <span class="chat-sub">Exchange keys, share pet updates &amp; photos</span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area">
+          <label class="chat-img-btn" title="Send a photo">
+            📷
+            <input type="file" id="chat-img-input" accept="image/*" style="display:none" />
+          </label>
+          <input type="text" id="chat-input" class="chat-text-input" placeholder="Message your helper…" />
+          <button class="btn-primary" id="chat-send">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MESSAGES -->
+  <div id="page-messages" class="page hidden">
+    <div class="page-content narrow">
+      <h1>Messages</h1>
+      <p class="sub">Conversations with your neighbors</p>
+      <div id="messages-list"></div>
+    </div>
+  </div>
+
+  <!-- CONTACT -->
+  <div id="page-contact" class="page hidden">
+    <div class="page-content narrow">
+      <h1>Contact us</h1>
+      <p class="sub">Have a question, concern, or feedback? Send us a message and we'll get back to you.</p>
+      <div id="contact-content"></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page hidden">
+    <div class="page-content narrow">
+      <h1>Account settings</h1>
+      <div id="settings-content"></div>
+    </div>
+  </div>
+
+  <!-- USER PROFILE -->
+  <div id="page-user-profile" class="page hidden">
+    <div class="page-content narrow" id="user-profile-content"></div>
+  </div>
+
+</div>
+
+<!-- MODALS -->
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div id="modal-box" class="modal-box">
+    <button class="modal-close" id="modal-close">✕</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

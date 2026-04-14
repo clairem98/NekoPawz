@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "PawCredits Server",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["apps/server/server.js"],
+      "port": 3000
+    }
+  ]
+}
