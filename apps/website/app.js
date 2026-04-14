@@ -23,7 +23,11 @@ async function api(method, path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Request failed');
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -53,15 +57,22 @@ function navigate(page, param) {
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
+// Prevents onAuthStateChanged from interfering while a sign-in flow is active
+let authFlowActive = false;
+
 function checkAuth() {
   firebase.auth().onAuthStateChanged(async fbUser => {
+    // If a manual sign-in is already in progress, let it handle the UI
+    if (authFlowActive) return;
     if (fbUser) {
       try {
         currentUser = await api('GET', '/api/me');
         showApp();
         navigate('dashboard');
-      } catch {
-        showLanding();
+      } catch (e) {
+        // Only drop to landing for genuine auth failures (401).
+        // For transient server/network errors, leave the user where they are.
+        if (!e.status || e.status === 401) showLanding();
       }
     } else {
       showLanding();
@@ -860,22 +871,31 @@ function closeModal() {
 
 // ── Google Sign-In ─────────────────────────────────────────────────────────
 async function signInWithGoogle() {
+  authFlowActive = true;
   const provider = new firebase.auth.GoogleAuthProvider();
   let cred;
   try {
     cred = await firebase.auth().signInWithPopup(provider);
   } catch (ex) {
+    authFlowActive = false;
     return { error: ex.message };
   }
   // Check if this Google user already has a backend profile
   try {
     currentUser = await api('GET', '/api/me');
+    authFlowActive = false;
     closeModal();
     showApp();
     navigate('dashboard');
-  } catch {
-    // New Google user — collect missing profile fields
-    openCompleteProfileModal(cred.user.displayName || '');
+  } catch (e) {
+    authFlowActive = false;
+    // Only ask for address info when the user genuinely has no profile (401)
+    if (e.status === 401) {
+      openCompleteProfileModal(cred.user.displayName || '');
+    } else {
+      // Returning user hit a transient error — show it, don't wipe their profile
+      return { error: e.message || 'Sign-in failed. Please try again.' };
+    }
   }
 }
 
@@ -979,16 +999,19 @@ function openLoginModal() {
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const err = document.getElementById('login-error');
+    authFlowActive = true;
     try {
       await firebase.auth().signInWithEmailAndPassword(
         document.getElementById('l-email').value,
         document.getElementById('l-password').value
       );
       currentUser = await api('GET', '/api/me');
+      authFlowActive = false;
       closeModal();
       showApp();
       navigate('dashboard');
     } catch (ex) {
+      authFlowActive = false;
       err.textContent = ex.message;
       err.classList.remove('hidden');
     }
