@@ -958,8 +958,18 @@ async function loadRequestDetail(id) {
       locationDisplay = `<span class="location-hidden">📍 Nearby &nbsp;<span class="location-lock">Address revealed after confirmation</span></span>`;
     }
 
+    const ownerActions = (isRequester && r.status === 'open') ? `
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="btn-outline btn-sm" onclick="showEditRequestForm('${r.id}')">Edit request</button>
+        <button class="btn-sm" style="color:var(--danger,#c0392b);border-color:var(--danger,#c0392b);background:transparent;border:1px solid;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:.85rem" onclick="deleteRequest('${r.id}')">Delete request</button>
+      </div>
+    ` : '';
+
     el.innerHTML = `
       <a href="#" onclick="history.back();return false" style="color:var(--text-muted);font-size:.9rem">← Back</a>
+      ${ownerActions}
+      <div id="edit-request-form-container" style="display:none"></div>
+      <div id="request-detail-view">
       <div class="detail-header">
         <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
           <span class="req-type-badge">${typeLabel(r.type)}</span>
@@ -1008,6 +1018,7 @@ async function loadRequestDetail(id) {
         </div>
       ` : ''}
       <div class="action-bar">${actions}</div>
+      </div>
     `;
 
     // Show chat for accepted/completed requests when the viewer is involved
@@ -1062,6 +1073,118 @@ async function cancelRequest(id) {
   try {
     await api('POST', `/api/requests/${id}/cancel`);
     loadRequestDetail(id);
+  } catch (e) { alert(e.message); }
+}
+
+async function showEditRequestForm(id) {
+  try {
+    const r = await api('GET', `/api/requests/${id}`);
+    const container = document.getElementById('edit-request-form-container');
+    const detailView = document.getElementById('request-detail-view');
+    if (!container || !detailView) return;
+    container.style.display = '';
+    detailView.style.display = 'none';
+    container.innerHTML = `
+      <div class="form-card" style="margin-bottom:20px">
+        <h2 style="margin-bottom:16px">Edit request</h2>
+        <div class="form-row">
+          <label>Type of help</label>
+          <select id="edit-req-type">
+            <option value="dog_walk" ${r.type==='dog_walk'?'selected':''}>Dog walk</option>
+            <option value="cat_checkin" ${r.type==='cat_checkin'?'selected':''}>Cat check-in</option>
+            <option value="other" ${r.type==='other'?'selected':''}>Other</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Date</label>
+          <input type="date" id="edit-req-date" value="${r.date || ''}" />
+        </div>
+        <div class="form-row">
+          <label>Time window</label>
+          <select id="edit-req-time">
+            <option value="" ${!r.time_window?'selected':''}>Flexible / any time</option>
+            <optgroup label="Morning">
+              <option value="Early morning (6–8am)" ${r.time_window==='Early morning (6–8am)'?'selected':''}>Early morning (6–8am)</option>
+              <option value="Morning (8–10am)" ${r.time_window==='Morning (8–10am)'?'selected':''}>Morning (8–10am)</option>
+              <option value="Mid-morning (9–11am)" ${r.time_window==='Mid-morning (9–11am)'?'selected':''}>Mid-morning (9–11am)</option>
+              <option value="Late morning (10am–12pm)" ${r.time_window==='Late morning (10am–12pm)'?'selected':''}>Late morning (10am–12pm)</option>
+            </optgroup>
+            <optgroup label="Afternoon">
+              <option value="Lunch (12–1pm)" ${r.time_window==='Lunch (12–1pm)'?'selected':''}>Lunch (12–1pm)</option>
+              <option value="Early afternoon (1–3pm)" ${r.time_window==='Early afternoon (1–3pm)'?'selected':''}>Early afternoon (1–3pm)</option>
+              <option value="Afternoon (3–5pm)" ${r.time_window==='Afternoon (3–5pm)'?'selected':''}>Afternoon (3–5pm)</option>
+              <option value="Late afternoon (4–6pm)" ${r.time_window==='Late afternoon (4–6pm)'?'selected':''}>Late afternoon (4–6pm)</option>
+            </optgroup>
+            <optgroup label="Evening">
+              <option value="Evening (6–8pm)" ${r.time_window==='Evening (6–8pm)'?'selected':''}>Evening (6–8pm)</option>
+              <option value="Late evening (8–10pm)" ${r.time_window==='Late evening (8–10pm)'?'selected':''}>Late evening (8–10pm)</option>
+            </optgroup>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Duration</label>
+          <select id="edit-req-duration">
+            <option value="" ${!r.duration?'selected':''}>Flexible / unspecified</option>
+            <option value="15 minutes" ${r.duration==='15 minutes'?'selected':''}>15 minutes</option>
+            <option value="20 minutes" ${r.duration==='20 minutes'?'selected':''}>20 minutes</option>
+            <option value="30 minutes" ${r.duration==='30 minutes'?'selected':''}>30 minutes</option>
+            <option value="45 minutes" ${r.duration==='45 minutes'?'selected':''}>45 minutes</option>
+            <option value="1 hour" ${r.duration==='1 hour'?'selected':''}>1 hour</option>
+            <option value="1.5 hours" ${r.duration==='1.5 hours'?'selected':''}>1.5 hours</option>
+            <option value="2 hours" ${r.duration==='2 hours'?'selected':''}>2 hours</option>
+            <option value="Half day (4 hours)" ${r.duration==='Half day (4 hours)'?'selected':''}>Half day (4 hours)</option>
+            <option value="Full day" ${r.duration==='Full day'?'selected':''}>Full day</option>
+            <option value="Overnight" ${r.duration==='Overnight'?'selected':''}>Overnight</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Credits to offer</label>
+          <input type="number" id="edit-req-credits" value="${r.credits || 1}" min="1" style="width:80px" />
+        </div>
+        <div class="form-row">
+          <label>Notes</label>
+          <textarea id="edit-req-notes" rows="3">${r.description || ''}</textarea>
+        </div>
+        <div id="edit-req-error" class="error-msg hidden"></div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn-primary" onclick="saveEditedRequest('${id}')">Save changes</button>
+          <button class="btn-ghost" onclick="cancelEditRequest('${id}')">Cancel</button>
+        </div>
+      </div>
+    `;
+  } catch (e) { alert(e.message); }
+}
+
+function cancelEditRequest(id) {
+  const container = document.getElementById('edit-request-form-container');
+  const detailView = document.getElementById('request-detail-view');
+  if (container) { container.style.display = 'none'; container.innerHTML = ''; }
+  if (detailView) detailView.style.display = '';
+}
+
+async function saveEditedRequest(id) {
+  const errEl = document.getElementById('edit-req-error');
+  if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+  const type     = document.getElementById('edit-req-type').value;
+  const date     = document.getElementById('edit-req-date').value;
+  const time     = document.getElementById('edit-req-time').value;
+  const duration = document.getElementById('edit-req-duration').value;
+  const credits  = parseInt(document.getElementById('edit-req-credits').value) || 1;
+  const notes    = document.getElementById('edit-req-notes').value;
+  try {
+    await api('PUT', `/api/requests/${id}`, { type, date, time, duration, credits, notes });
+    loadRequestDetail(id);
+  } catch (e) {
+    if (errEl) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
+    else alert(e.message);
+  }
+}
+
+async function deleteRequest(id) {
+  if (!confirm('Are you sure you want to delete this request? This cannot be undone.')) return;
+  try {
+    await api('DELETE', `/api/requests/${id}`);
+    navigate('my-requests');
   } catch (e) { alert(e.message); }
 }
 

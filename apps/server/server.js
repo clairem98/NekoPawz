@@ -551,6 +551,34 @@ app.post('/api/requests/:id/cancel', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// PUT /api/requests/:id — edit a request (requester only, status must be open)
+app.put('/api/requests/:id', requireAuth, async (req, res) => {
+  const rdoc = await db.collection('requests').doc(req.params.id).get();
+  if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
+  if (rdoc.data().requester_id !== req.userId) return res.status(403).json({ error: 'Only requester can edit' });
+  if (rdoc.data().status !== 'open') return res.status(400).json({ error: 'Can only edit open requests' });
+  const { type, date, time, duration, notes, credits } = req.body;
+  const update = {};
+  if (type !== undefined)     update.type          = type;
+  if (date !== undefined)     update.date          = date;
+  if (time !== undefined)     update.time_window   = time;
+  if (duration !== undefined) update.duration      = duration;
+  if (notes !== undefined)    update.description   = notes;
+  if (credits !== undefined)  update.credits       = parseInt(credits);
+  await db.collection('requests').doc(req.params.id).update(update);
+  res.json({ ok: true });
+});
+
+// DELETE /api/requests/:id — delete a request (requester only, status must be open)
+app.delete('/api/requests/:id', requireAuth, async (req, res) => {
+  const rdoc = await db.collection('requests').doc(req.params.id).get();
+  if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
+  if (rdoc.data().requester_id !== req.userId) return res.status(403).json({ error: 'Only requester can delete' });
+  if (rdoc.data().status !== 'open') return res.status(400).json({ error: 'Cannot delete a request that is already in progress' });
+  await db.collection('requests').doc(req.params.id).delete();
+  res.json({ ok: true });
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // REVIEWS
 // ════════════════════════════════════════════════════════════════════════════
