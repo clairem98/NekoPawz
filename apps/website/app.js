@@ -1133,12 +1133,16 @@ function openLoginModal() {
       <div class="auth-divider"><span>or</span></div>
       <div class="form-row">
         <label>Email</label>
-        <input type="email" id="l-email" placeholder="you@email.com" required />
+        <input type="email" id="l-email" placeholder="you@email.com" autocomplete="email" required />
       </div>
       <div class="form-row">
         <label>Password</label>
-        <input type="password" id="l-password" placeholder="Password" required />
+        <input type="password" id="l-password" placeholder="Password" autocomplete="current-password" required />
       </div>
+      <label class="remember-me-row">
+        <input type="checkbox" id="l-remember" checked />
+        <span>Keep me signed in</span>
+      </label>
       <div id="login-error" class="error-msg hidden"></div>
       <button type="submit" class="btn-primary full-width">Sign in</button>
       <p style="text-align:center;margin-top:16px;font-size:.85rem;color:var(--text-muted)">
@@ -1146,7 +1150,18 @@ function openLoginModal() {
       </p>
     </form>
   `);
+
+  // Helper: set Firebase persistence based on the checkbox
+  async function applyPersistence() {
+    const remember = document.getElementById('l-remember')?.checked !== false;
+    await firebase.auth().setPersistence(
+      remember ? firebase.auth.Auth.Persistence.LOCAL
+               : firebase.auth.Auth.Persistence.SESSION
+    );
+  }
+
   document.getElementById('google-signin-btn').addEventListener('click', async () => {
+    await applyPersistence();
     const result = await signInWithGoogle();
     if (result?.error) {
       const err = document.getElementById('login-error');
@@ -1158,6 +1173,7 @@ function openLoginModal() {
     const err = document.getElementById('login-error');
     authFlowActive = true;
     try {
+      await applyPersistence();
       await firebase.auth().signInWithEmailAndPassword(
         document.getElementById('l-email').value,
         document.getElementById('l-password').value

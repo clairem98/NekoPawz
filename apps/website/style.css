@@ -459,6 +459,15 @@ nav {
 .tos-label input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; cursor: pointer; accent-color: var(--primary); }
 .tos-label span { font-size: .85rem; line-height: 1.5; color: var(--text-mid); }
 .tos-label a { color: var(--primary); text-decoration: underline; }
+.remember-me-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0 4px; cursor: pointer; user-select: none;
+  font-size: .85rem; color: var(--text-mid);
+}
+.remember-me-row input[type="checkbox"] {
+  width: 16px; height: 16px; flex-shrink: 0;
+  cursor: pointer; accent-color: var(--green);
+}
 
 .type-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
 .type-btn {
