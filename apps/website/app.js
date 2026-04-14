@@ -843,6 +843,7 @@ async function loadNeighbors() {
             <div>
               <div class="neighbor-name">${firstName}</div>
               <div class="neighbor-unit">${locationLabel}</div>
+              ${n.avg_rating ? `<div class="stars" style="font-size:.85rem;margin-top:2px">${Array.from({length:5},(_,i)=>`<span class="star ${i<Math.round(n.avg_rating)?'active':''}">★</span>`).join('')} <span style="font-size:.75rem;color:var(--text-muted)">${n.avg_rating} (${n.review_count})</span></div>` : ''}
             </div>
           </div>
           ${n.pets_summary ? `<div class="neighbor-pets">🐾 ${n.pets_summary}</div>` : ''}
@@ -1873,7 +1874,7 @@ function requestCard(r, showStatus = false, showVolunteer = false) {
         </div>
       </div>
       <div class="req-title">${r.title}</div>
-      ${posterName ? `<div class="req-poster">Posted by <strong>${posterName}</strong></div>` : ''}
+      ${posterName ? `<div class="req-poster">Posted by <strong>${posterName}</strong>${r.requester_avg_rating ? ` <span class="stars" style="font-size:.8rem;vertical-align:middle">${Array.from({length:5},(_,i)=>`<span class="star ${i<Math.round(r.requester_avg_rating)?'active':''}">★</span>`).join('')}</span> <span style="font-size:.75rem;color:var(--text-muted)">${r.requester_avg_rating}</span>` : ''}</div>` : ''}
       <div class="req-meta">
         <span class="req-meta-tag req-date-tag">📅 ${formatRequestDate(r.date)}</span>
         ${r.time_window ? `<span class="req-meta-tag">🕐 ${r.time_window}</span>` : ''}

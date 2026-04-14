@@ -363,6 +363,23 @@ app.get('/api/requests', requireAuth, async (req, res) => {
     );
   }
 
+  // Attach requester ratings (batch fetch unique requesters)
+  const uniqueRequesterIds = [...new Set(requests.map(r => r.requester_id).filter(Boolean))];
+  const ratingMap = {};
+  await Promise.all(uniqueRequesterIds.map(async uid => {
+    const snap = await db.collection('reviews').where('reviewee_id', '==', uid).get();
+    const revs = snap.docs.map(d => d.data());
+    ratingMap[uid] = {
+      avg: revs.length ? (revs.reduce((s, r) => s + r.rating, 0) / revs.length).toFixed(1) : null,
+      count: revs.length,
+    };
+  }));
+  requests = requests.map(r => ({
+    ...r,
+    requester_avg_rating: ratingMap[r.requester_id]?.avg || null,
+    requester_review_count: ratingMap[r.requester_id]?.count || 0,
+  }));
+
   res.json(requests);
   } catch (e) {
     console.error('GET /api/requests error:', e);
@@ -643,8 +660,12 @@ app.get('/api/neighbors', requireAuth, async (req, res) => {
     if (!sameBuilding && (distanceMiles === null || distanceMiles > 1)) continue;
     const pets = await getUserPets(n.id);
     const pets_summary = pets.map(p => `${p.name} (${p.type})`).join(', ');
+    const revSnap = await db.collection('reviews').where('reviewee_id', '==', n.id).get();
+    const revs = revSnap.docs.map(d => d.data());
+    const avg_rating = revs.length ? (revs.reduce((s, r) => s + r.rating, 0) / revs.length).toFixed(1) : null;
+    const review_count = revs.length;
     const { ec_name, ec_phone, ec_relation, dob, firebase_uid, email, address, unit, ...safe } = n;
-    neighbors.push({ ...safe, name: maskName(n.name), pets_summary, sameBuilding, distanceMiles });
+    neighbors.push({ ...safe, name: maskName(n.name), pets_summary, sameBuilding, distanceMiles, avg_rating, review_count });
   }
   neighbors.sort((a, b) => {
     if (a.sameBuilding && !b.sameBuilding) return -1;
