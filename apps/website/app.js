@@ -32,7 +32,7 @@ async function waitForGoogleMaps() {
 let currentPage = 'landing';
 let browseTypeFilter = 'all';
 let browseDateFilter = 'all';
-let browseLocationFilter = 'building'; // 'building' or a miles string like '0.5'
+let browseLocationFilter = '10'; // miles string like '0.5', '1', '5', '10'
 let myRequestsTab = 'posted';
 
 // ── Avatar helper ──────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ function dateFilterMatch(dateStr, filter) {
 
 async function loadBrowse() {
   try {
-    const radiusParam = browseLocationFilter !== 'building' ? `&radius=${browseLocationFilter}` : '';
+    const radiusParam = `&radius=${browseLocationFilter}`;
     const requests = await api('GET', `/api/requests?status=open${radiusParam}`);
     let filtered = requests;
     if (browseTypeFilter !== 'all') filtered = filtered.filter(r => r.type === browseTypeFilter);
@@ -437,7 +437,7 @@ async function loadBrowse() {
           <p>Try expanding your distance filter or checking back later. You can also be the first to post a request!</p>
           <div class="es-actions">
             <button class="btn-primary" data-page="new-request">Post a request</button>
-            <button class="btn-outline" onclick="browseLocationFilter='1';loadBrowse()">Widen to 1 mile</button>
+            <button class="btn-outline" onclick="browseLocationFilter='10';loadBrowse()">Widen to 10 miles</button>
           </div>
         </div>`;
     } else {
