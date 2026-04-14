@@ -188,7 +188,7 @@ async function loadDashboard() {
       list.innerHTML = `
         <div class="dash-empty-activity">
           <p>No activity yet.</p>
-          <p class="dash-empty-hint">Help a neighbor to earn credit — then you can post a request of your own.</p>
+          <p class="dash-empty-hint">Credits are earned by helping neighbors and spent when you receive help.</p>
           <a href="#" data-page="browse" class="dash-empty-link">Browse open requests →</a>
         </div>`;
     } else {
