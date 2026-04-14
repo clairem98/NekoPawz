@@ -112,6 +112,23 @@ function notify(userId, type, title, body, requestId = null) {
   }).catch(() => {});
 }
 
+// ── Name-masking helpers ─────────────────────────────────────────────────────
+// Returns "FirstName L." unless showFull is true
+function maskName(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/);
+  if (parts.length < 2) return fullName;
+  return parts[0] + ' ' + parts[parts.length - 1][0].toUpperCase() + '.';
+}
+
+// Returns true if the two users have an accepted or completed request together
+async function confirmedRelationship(userId1, userId2) {
+  const [s1, s2] = await Promise.all([
+    db.collection('requests').where('requester_id', '==', userId1).where('helper_id', '==', userId2).get(),
+    db.collection('requests').where('requester_id', '==', userId2).where('helper_id', '==', userId1).get(),
+  ]);
+  return [...s1.docs, ...s2.docs].some(d => ['accepted', 'completed'].includes(d.data().status));
+}
+
 // ── Cloudinary upload helper ─────────────────────────────────────────────────
 function uploadToCloudinary(buffer, folder, options = {}) {
   return new Promise((resolve, reject) => {
@@ -183,19 +200,25 @@ app.post('/api/avatar', requireAuth, upload.single('avatar'), async (req, res) =
 app.get('/api/users/:id', requireAuth, async (req, res) => {
   const user = await getUser(req.params.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
-  const pets = await getUserPets(req.params.id);
-  const reviewsSnap = await db.collection('reviews')
-    .where('reviewee_id', '==', req.params.id)
-    .orderBy('created_at', 'desc').get();
+  const [pets, reviewsSnap, confirmed] = await Promise.all([
+    getUserPets(req.params.id),
+    db.collection('reviews').where('reviewee_id', '==', req.params.id).orderBy('created_at', 'desc').get(),
+    confirmedRelationship(req.userId, req.params.id),
+  ]);
   const reviews = await Promise.all(reviewsSnap.docs.map(async d => {
     const rv = d.data();
     const reviewer = await getUser(rv.reviewer_id);
-    return { ...rv, reviewer_name: reviewer?.name || 'Unknown' };
+    const rawName = reviewer?.name || 'Unknown';
+    // Mask reviewer names unless the viewing user is the reviewer or confirmed with them
+    const showFull = rv.reviewer_id === req.userId || await confirmedRelationship(req.userId, rv.reviewer_id);
+    return { ...rv, reviewer_name: showFull ? rawName : maskName(rawName) };
   }));
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
   const { ec_name, ec_phone, ec_relation, dob, firebase_uid, email, address, ...safe } = user;
-  res.json({ ...safe, pets, reviews, avgRating });
+  // Mask last name unless the viewing user has a confirmed request with this user
+  const displayName = confirmed ? safe.name : maskName(safe.name);
+  res.json({ ...safe, name: displayName, pets, reviews, avgRating });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -572,7 +595,7 @@ app.get('/api/neighbors', requireAuth, async (req, res) => {
     const pets = await getUserPets(n.id);
     const pets_summary = pets.map(p => `${p.name} (${p.type})`).join(', ');
     const { ec_name, ec_phone, ec_relation, dob, firebase_uid, email, address, unit, ...safe } = n;
-    neighbors.push({ ...safe, pets_summary, sameBuilding, distanceMiles });
+    neighbors.push({ ...safe, name: maskName(n.name), pets_summary, sameBuilding, distanceMiles });
   }
   neighbors.sort((a, b) => {
     if (a.sameBuilding && !b.sameBuilding) return -1;

@@ -327,13 +327,14 @@ async function loadProfile() {
 
     // Profile card
     document.getElementById('profile-card').innerHTML = `
-      <div class="profile-avatar-wrap">
+      <button class="profile-avatar-wrap profile-avatar-wrap--edit" onclick="openEditProfileModal()" title="Edit profile" aria-label="Edit profile">
         ${avatarHtml(me.name, me.avatar_url, 'profile-avatar')}
-      </div>
+        <span class="profile-avatar-edit-overlay">✏️</span>
+      </button>
       <div class="profile-info">
         <h2>${me.name}</h2>
         <p>${me.unit ? 'Unit ' + me.unit + ' · ' : ''}${me.building_name || me.building}</p>
-        ${me.bio ? `<p style="margin-top:6px;color:var(--text)">${me.bio}</p>` : ''}
+        ${me.bio ? `<p style="margin-top:6px;color:var(--text)">${me.bio}</p>` : `<p style="margin-top:4px;font-size:.82rem;color:var(--text-muted)">Tap your photo to add a bio</p>`}
       </div>
     `;
 
@@ -392,6 +393,71 @@ async function loadProfile() {
 
     renderPets(me.pets);
   } catch (e) { console.error(e); }
+}
+
+// ── Profile edit modal ──────────────────────────────────────────────────────
+function openEditProfileModal() {
+  const me = currentUser || {};
+  openModal(`
+    <h3 style="margin:0 0 18px">Edit Profile</h3>
+    <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:20px">
+      <div class="profile-avatar-edit-tap" id="profile-edit-avatar-wrap"
+           onclick="document.getElementById('profile-edit-photo-input').click()" title="Change photo">
+        ${avatarHtml(me.name, me.avatar_url, 'profile-avatar')}
+        <span class="profile-avatar-edit-overlay">📷</span>
+      </div>
+      <input type="file" id="profile-edit-photo-input"
+             accept="image/jpeg,image/png,image/gif,image/webp"
+             style="display:none" onchange="uploadAvatarFromModal(this)" />
+      <p style="font-size:.76rem;color:var(--text-muted);margin-top:6px">Tap to change photo</p>
+    </div>
+    <div class="form-row">
+      <label>Name</label>
+      <input type="text" id="profile-edit-name" value="${me.name || ''}" />
+    </div>
+    <div class="form-row">
+      <label>Bio</label>
+      <textarea id="profile-edit-bio" rows="3" placeholder="Tell neighbors a little about yourself…">${me.bio || ''}</textarea>
+    </div>
+    <div id="profile-edit-error" class="error-msg hidden"></div>
+    <div style="display:flex;gap:10px;margin-top:20px">
+      <button class="btn-outline" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" style="flex:2" onclick="saveProfileEdit()">Save changes</button>
+    </div>
+  `);
+}
+
+async function uploadAvatarFromModal(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { alert('Image must be under 4 MB'); input.value = ''; return; }
+  const formData = new FormData();
+  formData.append('avatar', file);
+  const fbUser = firebase.auth().currentUser;
+  const headers = {};
+  if (fbUser) headers['Authorization'] = `Bearer ${await fbUser.getIdToken()}`;
+  try {
+    const res = await fetch((window.API_BASE || '') + '/api/avatar', { method: 'POST', headers, body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    currentUser.avatar_url = data.avatar_url;
+    // Swap avatar inside modal
+    const wrap = document.getElementById('profile-edit-avatar-wrap');
+    if (wrap) wrap.innerHTML = avatarHtml(currentUser.name, data.avatar_url, 'profile-avatar') +
+      `<span class="profile-avatar-edit-overlay">📷</span>`;
+  } catch (e) { alert('Upload failed: ' + e.message); }
+}
+
+async function saveProfileEdit() {
+  const name = document.getElementById('profile-edit-name')?.value?.trim();
+  const bio  = document.getElementById('profile-edit-bio')?.value?.trim();
+  const err  = document.getElementById('profile-edit-error');
+  if (!name) { err.textContent = 'Name is required'; err.classList.remove('hidden'); return; }
+  try {
+    await api('PUT', '/api/settings', { name, bio });
+    closeModal();
+    loadProfile();
+  } catch (ex) { err.textContent = ex.message; err.classList.remove('hidden'); }
 }
 
 function renderPets(pets) {
