@@ -61,6 +61,7 @@ nav {
   text-decoration: none; white-space: nowrap; margin-right: 12px;
   letter-spacing: -.01em;
 }
+.nav-logo:hover { text-decoration: none; }
 .nav-links { display: flex; gap: 2px; flex: 1; }
 .nav-links a {
   padding: 6px 14px; border-radius: 99px;
