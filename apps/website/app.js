@@ -1251,9 +1251,13 @@ function openLoginModal() {
 // Attaches to an existing <input> and populates hidden lat/lng/building fields.
 // The user must SELECT from the dropdown (or use GPS) before the fields are set,
 // which guarantees accurate coordinates instead of an unvalidated free-text string.
-async function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
-  const input       = document.getElementById(inputId);
-  const statusEl    = document.getElementById(statusId);
+// setupAddressInput — attaches autocomplete + GPS to any address input.
+// Nominatim is wired up SYNCHRONOUSLY so listeners are always ready immediately.
+// Google Places is attached asynchronously in the background as an upgrade.
+// Validation uses data-dirty/data-confirmed attributes, not lat/lng presence.
+function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
+  const input    = document.getElementById(inputId);
+  const statusEl = document.getElementById(statusId);
   if (!input) return;
 
   function setConfirmed(lat, lng, displayAddr, buildingKey) {
@@ -1261,6 +1265,8 @@ async function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
     document.getElementById(lngId).value      = lng;
     document.getElementById(buildingId).value = buildingKey;
     input.value = displayAddr;
+    input.dataset.dirty     = 'false';
+    input.dataset.confirmed = 'true';
     if (statusEl) { statusEl.textContent = '✓ Address confirmed'; statusEl.className = 'addr-status addr-ok'; }
   }
 
@@ -1268,97 +1274,79 @@ async function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
     document.getElementById(latId).value      = '';
     document.getElementById(lngId).value      = '';
     document.getElementById(buildingId).value = '';
-    if (statusEl) { statusEl.textContent = ''; statusEl.className = 'addr-status'; }
+    input.dataset.dirty     = 'true';
+    input.dataset.confirmed = 'false';
+    if (statusEl) { statusEl.textContent = 'Select your address from the list below'; statusEl.className = 'addr-status'; }
   }
 
-  // ── Google Places path ────────────────────────────────────────────────────
-  const mapsReady = await waitForGoogleMaps();
-  if (mapsReady) {
-    const autocomplete = new google.maps.places.Autocomplete(input, {
-      types: ['address'],
-      fields: ['formatted_address', 'geometry', 'address_components'],
-    });
+  function buildPlaceKey(comp) {
+    const streetNum = comp.find(c => c.types.includes('street_number'))?.long_name || '';
+    const route     = comp.find(c => c.types.includes('route'))?.long_name           || '';
+    const locality  = comp.find(c => c.types.includes('locality'))?.long_name        || '';
+    const state     = comp.find(c => c.types.includes('administrative_area_level_1'))?.short_name || '';
+    return [streetNum, route, locality, state].filter(Boolean).join(', ').toLowerCase();
+  }
 
-    // Prevent Enter key from submitting the form while the Places dropdown is open
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
-    input.addEventListener('input', clearConfirmed);
-
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place.geometry) return; // user pressed Enter without picking a suggestion
-
-      const lat  = place.geometry.location.lat();
-      const lng  = place.geometry.location.lng();
-      const comp = place.address_components || [];
-
-      const streetNum = comp.find(c => c.types.includes('street_number'))?.long_name || '';
-      const route     = comp.find(c => c.types.includes('route'))?.long_name           || '';
-      const locality  = comp.find(c => c.types.includes('locality'))?.long_name        || '';
-      const state     = comp.find(c => c.types.includes('administrative_area_level_1'))?.short_name || '';
-
-      // Normalized building key — consistent for every unit at the same address
-      const buildingKey = [streetNum, route, locality, state].filter(Boolean).join(', ').toLowerCase();
-      const displayAddr = place.formatted_address || [streetNum, route, locality, state].filter(Boolean).join(', ');
-
-      setConfirmed(lat, lng, displayAddr, buildingKey);
-    });
-
-    // Geolocation button — reverse-geocode with Google
-    document.getElementById('detect-location-btn')?.addEventListener('click', () => {
-      const btn    = document.getElementById('detect-location-btn');
-      const icon   = document.getElementById('detect-icon');
-      const dstatus = document.getElementById('detect-status');
-      btn.disabled  = true;
-      icon.textContent = '⏳';
+  // ── GPS button (works with either geocoder) ───────────────────────────────
+  function setupGpsButton(useGoogle) {
+    const btn     = document.getElementById('detect-location-btn');
+    const icon    = document.getElementById('detect-icon');
+    const dstatus = document.getElementById('detect-status');
+    if (!btn) return;
+    // Remove any previous listener by cloning
+    const fresh = btn.cloneNode(true);
+    btn.parentNode.replaceChild(fresh, btn);
+    fresh.addEventListener('click', () => {
+      fresh.disabled = true;
+      document.getElementById('detect-icon').textContent = '⏳';
       if (dstatus) { dstatus.textContent = 'Detecting your location…'; dstatus.className = 'detect-status detecting'; }
-
       navigator.geolocation.getCurrentPosition(async pos => {
         const { latitude: lat, longitude: lng } = pos.coords;
         try {
-          const geocoder = new google.maps.Geocoder();
-          const { results } = await geocoder.geocode({ location: { lat, lng } });
-          if (!results?.length) throw new Error('No results');
-          const place = results[0];
-          const comp  = place.address_components || [];
-          const streetNum = comp.find(c => c.types.includes('street_number'))?.long_name || '';
-          const route     = comp.find(c => c.types.includes('route'))?.long_name           || '';
-          const locality  = comp.find(c => c.types.includes('locality'))?.long_name        || '';
-          const state     = comp.find(c => c.types.includes('administrative_area_level_1'))?.short_name || '';
-          const buildingKey = [streetNum, route, locality, state].filter(Boolean).join(', ').toLowerCase();
-          setConfirmed(lat, lng, place.formatted_address, buildingKey);
-          icon.textContent = '✅';
+          let displayAddr, buildingKey;
+          if (useGoogle && window.google?.maps) {
+            const geocoder = new google.maps.Geocoder();
+            const { results } = await geocoder.geocode({ location: { lat, lng } });
+            if (!results?.length) throw new Error('No results');
+            displayAddr = results[0].formatted_address;
+            buildingKey = buildPlaceKey(results[0].address_components || []);
+          } else {
+            const res  = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`, { headers: { 'Accept-Language': 'en' } });
+            const data = await res.json();
+            displayAddr = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            buildingKey = displayAddr;
+          }
+          setConfirmed(lat, lng, displayAddr, buildingKey);
+          document.getElementById('detect-icon').textContent = '✅';
           if (dstatus) { dstatus.textContent = '✓ Location detected — confirm your address above looks right.'; dstatus.className = 'detect-status success'; }
         } catch {
-          icon.textContent = '📍';
+          document.getElementById('detect-icon').textContent = '📍';
           if (dstatus) { dstatus.textContent = 'Could not fetch address. Try typing it above.'; dstatus.className = 'detect-status error'; }
-          btn.disabled = false;
+          fresh.disabled = false;
         }
       }, () => {
-        icon.textContent = '📍';
+        document.getElementById('detect-icon').textContent = '📍';
         if (dstatus) { dstatus.textContent = 'Location access denied. Please type your address.'; dstatus.className = 'detect-status error'; }
-        btn.disabled = false;
+        fresh.disabled = false;
       });
     });
-
-    return; // done — Google Places handles the dropdown UI itself
   }
 
-  // ── Nominatim fallback path ───────────────────────────────────────────────
+  // ── Nominatim — set up IMMEDIATELY (synchronous) ─────────────────────────
   const suggestionsBox = document.getElementById('address-suggestions');
-  if (!suggestionsBox) return;
-
   let debounceTimer;
+
   input.addEventListener('input', () => {
     clearConfirmed();
     clearTimeout(debounceTimer);
+    if (!suggestionsBox) return;
     const q = input.value.trim();
     if (q.length < 4) { suggestionsBox.classList.add('hidden'); return; }
     debounceTimer = setTimeout(async () => {
+      // Skip if Google Places has since taken over (it manages its own dropdown)
+      if (input.dataset.mapsActive === 'true') return;
       try {
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=6`,
-          { headers: { 'Accept-Language': 'en' } }
-        );
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=6`, { headers: { 'Accept-Language': 'en' } });
         const results = await res.json();
         if (!results.length) { suggestionsBox.classList.add('hidden'); return; }
         suggestionsBox.innerHTML = results.map(r =>
@@ -1372,50 +1360,41 @@ async function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
     }, 350);
   });
 
-  suggestionsBox.addEventListener('click', e => {
-    const item = e.target.closest('.suggestion-item');
-    if (!item) return;
-    const display = decodeURIComponent(item.dataset.display);
-    setConfirmed(item.dataset.lat, item.dataset.lng, display, display);
-    suggestionsBox.classList.add('hidden');
-  });
-
-  document.addEventListener('click', e => {
-    if (!e.target.closest('#' + inputId) && !e.target.closest('#address-suggestions'))
+  if (suggestionsBox) {
+    suggestionsBox.addEventListener('click', e => {
+      const item = e.target.closest('.suggestion-item');
+      if (!item) return;
+      setConfirmed(item.dataset.lat, item.dataset.lng, decodeURIComponent(item.dataset.display), decodeURIComponent(item.dataset.display));
       suggestionsBox.classList.add('hidden');
-  });
-
-  // Geolocation button — reverse-geocode with Nominatim
-  document.getElementById('detect-location-btn')?.addEventListener('click', () => {
-    const btn    = document.getElementById('detect-location-btn');
-    const icon   = document.getElementById('detect-icon');
-    const dstatus = document.getElementById('detect-status');
-    btn.disabled  = true;
-    icon.textContent = '⏳';
-    if (dstatus) { dstatus.textContent = 'Detecting your location…'; dstatus.className = 'detect-status detecting'; }
-
-    navigator.geolocation.getCurrentPosition(async pos => {
-      const { latitude: lat, longitude: lng } = pos.coords;
-      try {
-        const res  = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`,
-          { headers: { 'Accept-Language': 'en' } }
-        );
-        const data = await res.json();
-        const display = data.display_name || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-        setConfirmed(lat, lng, display, display);
-        icon.textContent = '✅';
-        if (dstatus) { dstatus.textContent = '✓ Location detected — confirm your address above looks right.'; dstatus.className = 'detect-status success'; }
-      } catch {
-        icon.textContent = '📍';
-        if (dstatus) { dstatus.textContent = 'Located you but could not fetch address. Try typing it above.'; dstatus.className = 'detect-status error'; }
-        btn.disabled = false;
-      }
-    }, () => {
-      icon.textContent = '📍';
-      if (dstatus) { dstatus.textContent = 'Location access denied. Please type your address.'; dstatus.className = 'detect-status error'; }
-      btn.disabled = false;
     });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('#' + inputId) && !e.target.closest('#address-suggestions'))
+        suggestionsBox.classList.add('hidden');
+    });
+  }
+
+  setupGpsButton(false); // start with Nominatim GPS
+
+  // ── Google Places — upgrade asynchronously in background ─────────────────
+  waitForGoogleMaps().then(ready => {
+    if (!ready || !document.getElementById(inputId)) return; // page may have changed
+    input.dataset.mapsActive = 'true'; // suppress Nominatim dropdown
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') e.preventDefault(); });
+
+    const autocomplete = new google.maps.places.Autocomplete(input, {
+      types: ['address'],
+      fields: ['formatted_address', 'geometry', 'address_components'],
+    });
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (!place.geometry) return;
+      const lat = place.geometry.location.lat();
+      const lng = place.geometry.location.lng();
+      const buildingKey = buildPlaceKey(place.address_components || []);
+      setConfirmed(lat, lng, place.formatted_address || '', buildingKey);
+    });
+
+    setupGpsButton(true); // upgrade GPS to use Google Geocoder
   });
 }
 
@@ -2063,17 +2042,18 @@ async function uploadAvatar(input) {
 }
 
 async function saveSettings() {
-  // Validate address if the user edited it
-  const sLat = document.getElementById('s-lat')?.value;
-  const sLng = document.getElementById('s-lng')?.value;
-  const sAddress = document.getElementById('s-address')?.value?.trim();
-  if (sAddress && (!sLat || !sLng)) {
+  const addrInput = document.getElementById('s-address');
+  // Only validate if the user actually changed the address
+  if (addrInput?.dataset.dirty === 'true') {
     alert('Please select your address from the dropdown — or tap 📍 to use your current location.');
-    document.getElementById('s-address')?.focus();
+    addrInput.focus();
     return;
   }
 
   try {
+    const sLat     = document.getElementById('s-lat')?.value;
+    const sLng     = document.getElementById('s-lng')?.value;
+    const sAddress = addrInput?.value?.trim();
     const body = {
       name: document.getElementById('s-name')?.value,
       bio: document.getElementById('s-bio')?.value,
@@ -2086,8 +2066,8 @@ async function saveSettings() {
       ec_phone: document.getElementById('s-ec-phone')?.value ?? '',
       ec_relation: document.getElementById('s-ec-relation')?.value ?? '',
     };
-    // Only send address fields if they have confirmed coordinates
-    if (sLat && sLng) {
+    // Include address fields whenever we have confirmed coordinates
+    if (sLat && sLng && sAddress) {
       body.address  = sAddress;
       body.building = document.getElementById('s-building')?.value || sAddress;
       body.lat = sLat;
