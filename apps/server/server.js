@@ -200,25 +200,21 @@ app.post('/api/avatar', requireAuth, upload.single('avatar'), async (req, res) =
 app.get('/api/users/:id', requireAuth, async (req, res) => {
   const user = await getUser(req.params.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
-  const [pets, reviewsSnap, confirmed] = await Promise.all([
+  const [pets, reviewsSnap] = await Promise.all([
     getUserPets(req.params.id),
     db.collection('reviews').where('reviewee_id', '==', req.params.id).orderBy('created_at', 'desc').get(),
-    confirmedRelationship(req.userId, req.params.id),
   ]);
   const reviews = await Promise.all(reviewsSnap.docs.map(async d => {
     const rv = d.data();
     const reviewer = await getUser(rv.reviewer_id);
-    const rawName = reviewer?.name || 'Unknown';
-    // Mask reviewer names unless the viewing user is the reviewer or confirmed with them
-    const showFull = rv.reviewer_id === req.userId || await confirmedRelationship(req.userId, rv.reviewer_id);
-    return { ...rv, reviewer_name: showFull ? rawName : maskName(rawName) };
+    // Always mask reviewer last names for all viewers
+    return { ...rv, reviewer_name: maskName(reviewer?.name || 'Unknown') };
   }));
   const avgRating = reviews.length
     ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
   const { ec_name, ec_phone, ec_relation, dob, firebase_uid, email, address, ...safe } = user;
-  // Mask last name unless the viewing user has a confirmed request with this user
-  const displayName = confirmed ? safe.name : maskName(safe.name);
-  res.json({ ...safe, name: displayName, pets, reviews, avgRating });
+  // Always mask last name — last names are never shown to other users
+  res.json({ ...safe, name: maskName(safe.name), pets, reviews, avgRating });
 });
 
 // ════════════════════════════════════════════════════════════════════════════
