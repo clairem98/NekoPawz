@@ -1388,9 +1388,12 @@ async function sendChatImage(file) {
   if (!file || !chatRequestId) return;
   const formData = new FormData();
   formData.append('image', file);
+  const headers = {};
+  const fbUser = firebase.auth().currentUser;
+  if (fbUser) headers['Authorization'] = `Bearer ${await fbUser.getIdToken()}`;
   try {
-    const res = await fetch(`/api/requests/${chatRequestId}/messages/image`, {
-      method: 'POST', body: formData, credentials: 'include'
+    const res = await fetch((window.API_BASE || '') + `/api/requests/${chatRequestId}/messages/image`, {
+      method: 'POST', headers, body: formData
     });
     if (!res.ok) { const d = await res.json(); throw new Error(d.error); }
     await refreshChat(chatRequestId);
