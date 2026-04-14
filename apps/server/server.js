@@ -368,6 +368,7 @@ app.get('/api/requests', requireAuth, async (req, res) => {
 });
 
 app.get('/api/requests/:id', requireAuth, async (req, res) => {
+  try {
   const rdoc = await db.collection('requests').doc(req.params.id).get();
   if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
   const r = { ...rdoc.data() };
@@ -421,6 +422,10 @@ app.get('/api/requests/:id', requireAuth, async (req, res) => {
   }
 
   res.json(r);
+  } catch (e) {
+    console.error('GET /api/requests/:id error:', e);
+    res.status(500).json({ error: 'Failed to load request.' });
+  }
 });
 
 app.post('/api/requests/:id/apply', requireAuth, async (req, res) => {

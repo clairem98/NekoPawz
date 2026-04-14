@@ -769,10 +769,11 @@ async function loadNeighbors() {
 
 // ── My Requests ────────────────────────────────────────────────────────────
 async function loadMyRequests() {
+  const list = document.getElementById('my-requests-list');
+  if (list) list.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">Loading…</div>';
   try {
     const url = myRequestsTab === 'posted' ? '/api/requests?mine=true' : '/api/requests?helping=true';
     const requests = await api('GET', url);
-    const list = document.getElementById('my-requests-list');
     if (!requests.length) {
       const isPosted = myRequestsTab === 'posted';
       list.innerHTML = `
@@ -789,11 +790,15 @@ async function loadMyRequests() {
     } else {
       list.innerHTML = requests.map(r => requestCard(r, true)).join('');
     }
-  } catch {}
+  } catch (e) {
+    if (list) list.innerHTML = `<div class="error-msg">Couldn't load requests — ${e.message}. <button class="btn-ghost btn-sm" onclick="loadMyRequests()">Retry</button></div>`;
+  }
 }
 
 // ── Request Detail ─────────────────────────────────────────────────────────
 async function loadRequestDetail(id) {
+  const el = document.getElementById('request-detail-content');
+  if (el) el.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-muted)">Loading…</div>';
   try {
     const r = await api('GET', `/api/requests/${id}`);
     const el = document.getElementById('request-detail-content');
@@ -2024,7 +2029,10 @@ document.querySelectorAll('.type-btn').forEach(btn => {
 document.getElementById('new-request-form').addEventListener('submit', async e => {
   e.preventDefault();
   const err = document.getElementById('req-error');
+  const btn = document.getElementById('req-submit-btn');
   err.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Posting…';
   try {
     const checkedPets = [...document.querySelectorAll('input[name="req-pet-ids"]:checked')].map(cb => cb.value);
     const result = await api('POST', '/api/requests', {
@@ -2039,10 +2047,13 @@ document.getElementById('new-request-form').addEventListener('submit', async e =
       directed_to: document.getElementById('req-directed-to').value || null,
     });
     await refreshUser();
-    navigate('request-detail', result.id);
+    // Navigate to My Requests so the user can see their new request in the list
+    navigate('my-requests');
   } catch (ex) {
     err.textContent = ex.message;
     err.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Post request';
   }
 });
 
