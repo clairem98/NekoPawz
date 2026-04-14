@@ -1181,7 +1181,7 @@ input.addr-confirmed { border-color: var(--green-mid) !important; box-shadow: 0 
 }
 
 /* ─── NEIGHBOR CARD BUTTON ────────────────────────────────────────────── */
-.btn-sm { padding: 6px 14px; font-size: .8rem; margin-top: 10px; width: 100%; }
+.neighbor-card .btn-sm { margin-top: 10px; width: 100%; }
 
 /* ─── APPLICANTS ─────────────────────────────────────────────────────── */
 .applicants-section { width: 100%; }
