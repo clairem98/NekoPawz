@@ -772,11 +772,17 @@ app.get('/api/settings', requireAuth, async (req, res) => {
 
 app.put('/api/settings', requireAuth, async (req, res) => {
   const { name, bio, unit, notif_messages, notif_accepted,
-          notif_reminders, notif_browser, ec_name, ec_phone, ec_relation } = req.body;
+          notif_reminders, notif_browser, ec_name, ec_phone, ec_relation,
+          address, building, lat, lng } = req.body;
   const updates = {};
   if (name  !== undefined) updates.name = name;
   if (bio   !== undefined) updates.bio  = bio;
   if (unit  !== undefined) updates.unit = unit;
+  // Address update — only applied when the client sends confirmed geocoordinates
+  if (address  !== undefined) updates.address  = address;
+  if (building !== undefined) updates.building = building;
+  if (lat != null && lat !== '') updates.lat = parseFloat(lat);
+  if (lng != null && lng !== '') updates.lng = parseFloat(lng);
   updates.notif_messages  = notif_messages  ? 1 : 0;
   updates.notif_accepted  = notif_accepted  ? 1 : 0;
   updates.notif_reminders = notif_reminders ? 1 : 0;

@@ -1967,10 +1967,19 @@ async function loadSettings() {
             <label>Unit number</label>
             <input type="text" id="s-unit" value="${s.unit || ''}" placeholder="4B" />
           </div>
-          <div class="form-row">
-            <label>Address</label>
-            <input type="text" value="${s.address || s.building}" disabled style="color:var(--text-muted)" />
-            <p style="font-size:.78rem;color:var(--text-muted);margin-top:4px">To change your address, contact support.</p>
+          <div class="form-row" style="position:relative">
+            <label>Street address</label>
+            <p style="font-size:.78rem;color:var(--text-muted);margin:-4px 0 6px">Select from the dropdown to confirm your location.</p>
+            <div class="address-input-wrap">
+              <input type="text" id="s-address" value="${(s.address || s.building || '').replace(/"/g,'&quot;')}" autocomplete="off" />
+              <button type="button" class="detect-location-btn" id="detect-location-btn" title="Use my current location"><span id="detect-icon">📍</span></button>
+            </div>
+            <div id="address-suggestions" class="address-suggestions hidden"></div>
+            <div id="addr-confirm-status" class="addr-status addr-ok">${s.lat && s.lng ? '✓ Address confirmed' : ''}</div>
+            <div id="detect-status" class="detect-status hidden"></div>
+            <input type="hidden" id="s-building" value="${(s.building || '').replace(/"/g,'&quot;')}" />
+            <input type="hidden" id="s-lat"      value="${s.lat || ''}" />
+            <input type="hidden" id="s-lng"      value="${s.lng || ''}" />
           </div>
           <button class="btn-primary" onclick="saveSettings()">Save profile</button>
         </div>
@@ -2029,6 +2038,8 @@ async function loadSettings() {
         </div>
       </div>
     `;
+    // Wire up address autocomplete — pre-confirm existing coords so the green tick shows immediately
+    setupAddressInput('s-address', 's-lat', 's-lng', 's-building', 'addr-confirm-status');
   } catch (e) { document.getElementById('settings-content').innerHTML = `<p class="error-msg">${e.message}</p>`; }
 }
 
@@ -2052,8 +2063,18 @@ async function uploadAvatar(input) {
 }
 
 async function saveSettings() {
+  // Validate address if the user edited it
+  const sLat = document.getElementById('s-lat')?.value;
+  const sLng = document.getElementById('s-lng')?.value;
+  const sAddress = document.getElementById('s-address')?.value?.trim();
+  if (sAddress && (!sLat || !sLng)) {
+    alert('Please select your address from the dropdown — or tap 📍 to use your current location.');
+    document.getElementById('s-address')?.focus();
+    return;
+  }
+
   try {
-    await api('PUT', '/api/settings', {
+    const body = {
       name: document.getElementById('s-name')?.value,
       bio: document.getElementById('s-bio')?.value,
       unit: document.getElementById('s-unit')?.value,
@@ -2064,10 +2085,17 @@ async function saveSettings() {
       ec_name: document.getElementById('s-ec-name')?.value ?? '',
       ec_phone: document.getElementById('s-ec-phone')?.value ?? '',
       ec_relation: document.getElementById('s-ec-relation')?.value ?? '',
-    });
+    };
+    // Only send address fields if they have confirmed coordinates
+    if (sLat && sLng) {
+      body.address  = sAddress;
+      body.building = document.getElementById('s-building')?.value || sAddress;
+      body.lat = sLat;
+      body.lng = sLng;
+    }
+    await api('PUT', '/api/settings', body);
     currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
     updateNavCredits();
-    // Show brief confirmation
     const btn = event.target;
     const orig = btn.textContent;
     btn.textContent = '✅ Saved!'; btn.disabled = true;
