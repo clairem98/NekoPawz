@@ -442,7 +442,7 @@ async function loadBrowse() {
         </div>`;
     } else {
       countEl.textContent = `${filtered.length} request${filtered.length !== 1 ? 's' : ''} found`;
-      grid.innerHTML = filtered.map(r => requestCard(r)).join('');
+      grid.innerHTML = filtered.map(r => requestCard(r, false, true)).join('');
     }
   } catch (e) {
     document.getElementById('browse-requests').innerHTML = `<p class="error-msg">${e.message}</p>`;
@@ -1839,10 +1839,11 @@ async function submitReview(requestId, revieweeId) {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function requestCard(r, showStatus = false) {
+function requestCard(r, showStatus = false, showVolunteer = false) {
   const isInvolved  = r.requester_id === currentUser?.id || r.helper_id === currentUser?.id;
   const confirmed   = isInvolved && r.status !== 'open';
   const sameBuilding = r.distanceLabel === 'Same building' || r.req_building === currentUser?.building;
+  const canVolunteer = showVolunteer && r.status === 'open' && r.requester_id !== currentUser?.id && !r.myApplication;
 
   let locationHint;
   if (confirmed) {
@@ -1881,6 +1882,11 @@ function requestCard(r, showStatus = false) {
         ${locationHint}
       </div>
       ${r.pet_notes ? `<div class="req-pet-notes">"${r.pet_notes}"</div>` : ''}
+      ${canVolunteer ? `
+        <div onclick="event.stopPropagation()" style="margin-top:12px">
+          <button class="btn-primary" style="width:100%;padding:10px" onclick="applyRequest('${r.id}');this.textContent='✓ Volunteered!';this.disabled=true">🤝 Volunteer to help</button>
+        </div>` : ''}
+      ${r.myApplication === 'pending' ? `<div style="margin-top:10px;font-size:.82rem;color:var(--green-mid);font-weight:600;text-align:center">✓ Volunteer request sent</div>` : ''}
     </div>
   `;
 }
