@@ -1,12 +1,27 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const express = require('express');
-const session = require('express-session');
-const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const path = require('path');
 const multer = require('multer');
 const nodemailer = require('nodemailer');
+const admin = require('firebase-admin');
 const db = require('./db');
+
+// Firebase Admin SDK — only init if FIREBASE_SERVICE_ACCOUNT is set
+let firebaseReady = false;
+try {
+  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (raw) {
+    if (!admin.apps.length) {
+      admin.initializeApp({ credential: admin.credential.cert(JSON.parse(raw)) });
+    }
+    firebaseReady = true;
+  } else {
+    console.warn('FIREBASE_SERVICE_ACCOUNT not set — auth endpoints will return 503 until configured.');
+  }
+} catch (e) {
+  console.warn('Firebase Admin init failed:', e.message);
+}
 
 // Mail transporter — uses Gmail app password from .env
 const CONTACT_EMAIL = 'Nekopawz92@gmail.com';
@@ -20,20 +35,54 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 } // 8MB
 });
 
+const ALLOWED_ORIGINS = [
+  'https://www.nekopawz.com',
+  'https://nekopawz.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
 const app = express();
+
+// CORS — allow requests from the frontend
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../website')));
-app.use(session({
-  secret: 'pawcredits-secret-2024',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 }
-}));
 
-function requireAuth(req, res, next) {
-  if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated' });
-  next();
+async function requireAuth(req, res, next) {
+  if (!firebaseReady) return res.status(503).json({ error: 'Firebase not configured. Add FIREBASE_SERVICE_ACCOUNT to your environment.' });
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const decoded = await admin.auth().verifyIdToken(auth.slice(7));
+    const user = db.prepare('SELECT id FROM users WHERE firebase_uid = ?').get(decoded.uid);
+    if (!user) return res.status(401).json({ error: 'User not found' });
+    req.userId = user.id;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// /api/register also verifies a token before Firebase is ready check
+async function verifyFirebaseToken(req, res) {
+  if (!firebaseReady) { res.status(503).json({ error: 'Firebase not configured. Add FIREBASE_SERVICE_ACCOUNT to your environment.' }); return null; }
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) { res.status(401).json({ error: 'Authentication required' }); return null; }
+  try { return await admin.auth().verifyIdToken(auth.slice(7)); }
+  catch { res.status(401).json({ error: 'Invalid token' }); return null; }
 }
 
 // Haversine distance in miles between two lat/lng points
@@ -53,48 +102,34 @@ function formatDistance(miles) {
   return `${miles.toFixed(1)} mi away`;
 }
 
-// Auth
-app.post('/api/register', (req, res) => {
-  const { name, email, password, building, building_name, address, unit, bio, lat, lng, dob } = req.body;
-  if (!name || !email || !password || !building || !address)
+// Auth — Firebase handles sign-up/sign-in; backend just creates the user profile
+app.post('/api/register', async (req, res) => {
+  const decoded = await verifyFirebaseToken(req, res);
+  if (!decoded) return;
+
+  const { name, building, building_name, address, unit, bio, lat, lng, dob } = req.body;
+  if (!name || !building || !address)
     return res.status(400).json({ error: 'All fields required' });
   if (!dob) return res.status(400).json({ error: 'Date of birth is required' });
   const ageMs = Date.now() - new Date(dob).getTime();
-  const agYears = ageMs / (365.25 * 24 * 60 * 60 * 1000);
-  if (agYears < 18) return res.status(400).json({ error: 'You must be at least 18 years old to create an account.' });
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-  if (existing) return res.status(400).json({ error: 'Email already registered' });
-  const hash = bcrypt.hashSync(password, 10);
+  if (ageMs / (365.25 * 24 * 60 * 60 * 1000) < 18)
+    return res.status(400).json({ error: 'You must be at least 18 years old to create an account.' });
+  const existing = db.prepare('SELECT id FROM users WHERE firebase_uid = ?').get(decoded.uid);
+  if (existing) return res.status(400).json({ error: 'Account already exists' });
   const id = uuidv4();
   const latVal = lat != null && lat !== '' ? parseFloat(lat) : null;
   const lngVal = lng != null && lng !== '' ? parseFloat(lng) : null;
-  // Users start with 1 credit after identity verification
   db.prepare(`INSERT INTO users
-    (id, name, email, password_hash, building, building_name, address, unit, bio, credits, lat, lng, dob)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
-    .run(id, name, email, hash, building, building_name || '', address, unit || '', bio || '', latVal, lngVal, dob);
-  req.session.userId = id;
-  res.json({ ok: true });
-});
-
-app.post('/api/login', (req, res) => {
-  const { email, password } = req.body;
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user || !bcrypt.compareSync(password, user.password_hash))
-    return res.status(401).json({ error: 'Invalid email or password' });
-  req.session.userId = user.id;
-  res.json({ ok: true });
-});
-
-app.post('/api/logout', (req, res) => {
-  req.session.destroy();
+    (id, name, email, password_hash, firebase_uid, building, building_name, address, unit, bio, credits, lat, lng, dob)
+    VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
+    .run(id, name, decoded.email || '', decoded.uid, building, building_name || '', address, unit || '', bio || '', latVal, lngVal, dob);
   res.json({ ok: true });
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, credits, bio, created_at FROM users WHERE id = ?').get(req.session.userId);
+  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, credits, bio, created_at FROM users WHERE id = ?').get(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  const pets = db.prepare('SELECT * FROM pets WHERE owner_id = ?').all(req.session.userId);
+  const pets = db.prepare('SELECT * FROM pets WHERE owner_id = ?').all(req.userId);
   res.json({ ...user, pets });
 });
 
@@ -118,12 +153,12 @@ app.post('/api/pets', requireAuth, (req, res) => {
   if (!name || !type) return res.status(400).json({ error: 'Name and type required' });
   const id = uuidv4();
   db.prepare('INSERT INTO pets (id, owner_id, name, type, breed, age, notes) VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(id, req.session.userId, name, type, breed || '', age || '', notes || '');
+    .run(id, req.userId, name, type, breed || '', age || '', notes || '');
   res.json({ id, name, type, breed, age, notes });
 });
 
 app.delete('/api/pets/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM pets WHERE id = ? AND owner_id = ?').run(req.params.id, req.session.userId);
+  db.prepare('DELETE FROM pets WHERE id = ? AND owner_id = ?').run(req.params.id, req.userId);
   res.json({ ok: true });
 });
 
@@ -132,7 +167,7 @@ app.post('/api/requests', requireAuth, (req, res) => {
   const { type, title, description, date, time_window, duration, pet_ids: rawPetIds, directed_to, credits: rawCredits } = req.body;
   if (!type || !title || !date) return res.status(400).json({ error: 'Missing fields' });
   const CREDITS = Math.max(1, Math.min(20, parseInt(rawCredits) || 1));
-  const user = db.prepare('SELECT credits, building FROM users WHERE id = ?').get(req.session.userId);
+  const user = db.prepare('SELECT credits, building FROM users WHERE id = ?').get(req.userId);
   if (user.credits < CREDITS) return res.status(400).json({ error: `Not enough credits. You have ${user.credits} but this request needs ${CREDITS}.` });
   // Validate directed_to if provided
   if (directed_to) {
@@ -145,7 +180,7 @@ app.post('/api/requests', requireAuth, (req, res) => {
   const id = uuidv4();
   db.prepare(`INSERT INTO requests (id, requester_id, pet_id, pet_ids, type, title, description, credits, date, time_window, duration, building, directed_to)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, req.session.userId, firstPetId, petIdsStr, type, title, description || '', CREDITS, date, time_window || '', duration || '', user.building, directed_to || null);
+    .run(id, req.userId, firstPetId, petIdsStr, type, title, description || '', CREDITS, date, time_window || '', duration || '', user.building, directed_to || null);
   // Notify the directed sitter if specified
   if (directed_to) {
     notify(directed_to, 'request', 'New request just for you', `${user.name} sent you a direct pet care request`, id);
@@ -154,7 +189,7 @@ app.post('/api/requests', requireAuth, (req, res) => {
 });
 
 app.get('/api/requests', requireAuth, (req, res) => {
-  const me = db.prepare('SELECT building, lat, lng FROM users WHERE id = ?').get(req.session.userId);
+  const me = db.prepare('SELECT building, lat, lng FROM users WHERE id = ?').get(req.userId);
   const { status, mine, helping, radius } = req.query;
 
   let query = `
@@ -171,18 +206,18 @@ app.get('/api/requests', requireAuth, (req, res) => {
   const params = [];
 
   if (mine === 'true') {
-    query += ' AND r.requester_id = ?'; params.push(req.session.userId);
+    query += ' AND r.requester_id = ?'; params.push(req.userId);
   } else if (helping === 'true') {
-    query += ' AND r.helper_id = ?'; params.push(req.session.userId);
+    query += ' AND r.helper_id = ?'; params.push(req.userId);
   } else {
     // Only show directed requests if they're directed at the current user
-    query += ' AND (r.directed_to IS NULL OR r.directed_to = ?)'; params.push(req.session.userId);
+    query += ' AND (r.directed_to IS NULL OR r.directed_to = ?)'; params.push(req.userId);
     if (!radius || radius === 'building') {
       query += ' AND r.building = ? AND r.requester_id != ?';
-      params.push(me.building, req.session.userId);
+      params.push(me.building, req.userId);
     } else {
       query += ' AND r.requester_id != ?';
-      params.push(req.session.userId);
+      params.push(req.userId);
     }
   }
 
@@ -251,12 +286,12 @@ app.get('/api/requests/:id', requireAuth, (req, res) => {
     }
   }
   // Viewer's own application (if they're a potential helper)
-  const myApp = db.prepare("SELECT status FROM applications WHERE request_id = ? AND applicant_id = ?").get(req.params.id, req.session.userId);
+  const myApp = db.prepare("SELECT status FROM applications WHERE request_id = ? AND applicant_id = ?").get(req.params.id, req.userId);
   r.myApplication = myApp?.status || null;
 
   // Applications list for the requester
-  if (r.requester_id === req.session.userId && r.status === 'open') {
-    const me = db.prepare('SELECT lat, lng, building FROM users WHERE id = ?').get(req.session.userId);
+  if (r.requester_id === req.userId && r.status === 'open') {
+    const me = db.prepare('SELECT lat, lng, building FROM users WHERE id = ?').get(req.userId);
     const apps = db.prepare(`
       SELECT a.applicant_id as id, a.status, u.name, u.building, u.lat, u.lng,
         ROUND(AVG(rv.rating),1) as avg_rating, COUNT(rv.id) as review_count
@@ -279,7 +314,7 @@ app.get('/api/requests/:id', requireAuth, (req, res) => {
   }
 
   // Whether the current user has already reviewed this request
-  const myReview = db.prepare('SELECT rating FROM reviews WHERE request_id = ? AND reviewer_id = ?').get(req.params.id, req.session.userId);
+  const myReview = db.prepare('SELECT rating FROM reviews WHERE request_id = ? AND reviewer_id = ?').get(req.params.id, req.userId);
   r.alreadyReviewed = myReview ? myReview.rating : null;
   // Helper's average rating and name
   if (r.helper_id) {
@@ -308,20 +343,20 @@ app.post('/api/requests/:id/apply', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
   if (request.status !== 'open') return res.status(400).json({ error: 'Request no longer open' });
-  if (request.requester_id === req.session.userId) return res.status(400).json({ error: 'Cannot apply to your own request' });
-  if (request.directed_to && request.directed_to !== req.session.userId) return res.status(403).json({ error: 'This request is directed to another sitter' });
+  if (request.requester_id === req.userId) return res.status(400).json({ error: 'Cannot apply to your own request' });
+  if (request.directed_to && request.directed_to !== req.userId) return res.status(403).json({ error: 'This request is directed to another sitter' });
 
-  const applicant = db.prepare('SELECT name FROM users WHERE id = ?').get(req.session.userId);
+  const applicant = db.prepare('SELECT name FROM users WHERE id = ?').get(req.userId);
   try {
-    db.prepare('INSERT INTO applications (id, request_id, applicant_id) VALUES (?, ?, ?)').run(uuidv4(), request.id, req.session.userId);
+    db.prepare('INSERT INTO applications (id, request_id, applicant_id) VALUES (?, ?, ?)').run(uuidv4(), request.id, req.userId);
   } catch (e) {
     return res.status(400).json({ error: 'Already applied' });
   }
 
   // Auto-approve for directed requests
-  if (request.directed_to === req.session.userId) {
-    db.prepare('UPDATE requests SET status = ?, helper_id = ? WHERE id = ?').run('accepted', req.session.userId, request.id);
-    db.prepare("UPDATE applications SET status = 'approved' WHERE request_id = ? AND applicant_id = ?").run(request.id, req.session.userId);
+  if (request.directed_to === req.userId) {
+    db.prepare('UPDATE requests SET status = ?, helper_id = ? WHERE id = ?').run('accepted', req.userId, request.id);
+    db.prepare("UPDATE applications SET status = 'approved' WHERE request_id = ? AND applicant_id = ?").run(request.id, req.userId);
     notify(request.requester_id, 'accepted', 'Your helper is confirmed!',
       `${applicant.name} accepted your direct request "${request.title}".`, request.id);
     return res.json({ ok: true, autoApproved: true });
@@ -336,7 +371,7 @@ app.post('/api/requests/:id/apply', requireAuth, (req, res) => {
 app.post('/api/requests/:id/approve/:applicantId', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  if (request.requester_id !== req.session.userId) return res.status(403).json({ error: 'Only the requester can approve' });
+  if (request.requester_id !== req.userId) return res.status(403).json({ error: 'Only the requester can approve' });
   if (request.status !== 'open') return res.status(400).json({ error: 'Request no longer open' });
 
   const app = db.prepare('SELECT * FROM applications WHERE request_id = ? AND applicant_id = ? AND status = ?').get(request.id, req.params.applicantId, 'pending');
@@ -363,7 +398,7 @@ app.post('/api/requests/:id/approve/:applicantId', requireAuth, (req, res) => {
 app.post('/api/requests/:id/decline/:applicantId', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  if (request.requester_id !== req.session.userId) return res.status(403).json({ error: 'Only the requester can decline' });
+  if (request.requester_id !== req.userId) return res.status(403).json({ error: 'Only the requester can decline' });
   db.prepare("UPDATE applications SET status = 'declined' WHERE request_id = ? AND applicant_id = ?").run(request.id, req.params.applicantId);
   notify(req.params.applicantId, 'declined', 'Application not selected',
     `Your application for "${request.title}" was not selected this time.`, request.id);
@@ -373,7 +408,7 @@ app.post('/api/requests/:id/decline/:applicantId', requireAuth, (req, res) => {
 app.post('/api/requests/:id/complete', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  if (request.requester_id !== req.session.userId) return res.status(403).json({ error: 'Only requester can mark complete' });
+  if (request.requester_id !== req.userId) return res.status(403).json({ error: 'Only requester can mark complete' });
   if (request.status !== 'accepted') return res.status(400).json({ error: 'Request not accepted yet' });
 
   const txn = db.transaction(() => {
@@ -396,7 +431,7 @@ app.post('/api/requests/:id/complete', requireAuth, (req, res) => {
 app.post('/api/requests/:id/cancel', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  if (request.requester_id !== req.session.userId) return res.status(403).json({ error: 'Only requester can cancel' });
+  if (request.requester_id !== req.userId) return res.status(403).json({ error: 'Only requester can cancel' });
   if (!['open', 'accepted'].includes(request.status)) return res.status(400).json({ error: 'Cannot cancel' });
   db.prepare('UPDATE requests SET status = ? WHERE id = ?').run('cancelled', request.id);
   res.json({ ok: true });
@@ -408,13 +443,13 @@ app.post('/api/reviews', requireAuth, (req, res) => {
   if (!request_id || !reviewee_id || !rating) return res.status(400).json({ error: 'Missing fields' });
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(request_id);
   if (!request || request.status !== 'completed') return res.status(400).json({ error: 'Request not completed' });
-  const isInvolved = request.requester_id === req.session.userId || request.helper_id === req.session.userId;
+  const isInvolved = request.requester_id === req.userId || request.helper_id === req.userId;
   if (!isInvolved) return res.status(403).json({ error: 'Not involved in this request' });
-  const existing = db.prepare('SELECT id FROM reviews WHERE request_id = ? AND reviewer_id = ?').get(request_id, req.session.userId);
+  const existing = db.prepare('SELECT id FROM reviews WHERE request_id = ? AND reviewer_id = ?').get(request_id, req.userId);
   if (existing) return res.status(400).json({ error: 'Already reviewed' });
   const id = uuidv4();
   db.prepare('INSERT INTO reviews (id, request_id, reviewer_id, reviewee_id, rating, comment) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, request_id, req.session.userId, reviewee_id, rating, comment || '');
+    .run(id, request_id, req.userId, reviewee_id, rating, comment || '');
   res.json({ ok: true });
 });
 
@@ -430,13 +465,13 @@ app.get('/api/activity', requireAuth, (req, res) => {
     LEFT JOIN requests r ON t.request_id = r.id
     WHERE t.from_user_id = ? OR t.to_user_id = ?
     ORDER BY t.created_at DESC LIMIT 20
-  `).all(req.session.userId, req.session.userId);
+  `).all(req.userId, req.userId);
   res.json(txns);
 });
 
 // Neighbors
 app.get('/api/neighbors', requireAuth, (req, res) => {
-  const me = db.prepare('SELECT building, lat, lng FROM users WHERE id = ?').get(req.session.userId);
+  const me = db.prepare('SELECT building, lat, lng FROM users WHERE id = ?').get(req.userId);
   const all = db.prepare(`
     SELECT u.id, u.name, u.building, u.lat, u.lng, u.bio,
       GROUP_CONCAT(p.name || ' (' || p.type || ')') as pets_summary
@@ -445,7 +480,7 @@ app.get('/api/neighbors', requireAuth, (req, res) => {
     WHERE u.id != ?
     GROUP BY u.id
     ORDER BY u.name
-  `).all(req.session.userId);
+  `).all(req.userId);
 
   const neighbors = all
     .map(n => {
@@ -471,7 +506,7 @@ app.get('/api/neighbors', requireAuth, (req, res) => {
 app.get('/api/requests/:id/messages', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  const isInvolved = request.requester_id === req.session.userId || request.helper_id === req.session.userId;
+  const isInvolved = request.requester_id === req.userId || request.helper_id === req.userId;
   if (!isInvolved) return res.status(403).json({ error: 'Not involved' });
   const messages = db.prepare(`
     SELECT m.*, u.name as sender_name
@@ -485,34 +520,34 @@ app.post('/api/requests/:id/messages', requireAuth, (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
   if (!['accepted', 'completed'].includes(request.status)) return res.status(400).json({ error: 'Messaging only available for accepted requests' });
-  const isInvolved = request.requester_id === req.session.userId || request.helper_id === req.session.userId;
+  const isInvolved = request.requester_id === req.userId || request.helper_id === req.userId;
   if (!isInvolved) return res.status(403).json({ error: 'Not involved' });
   const { body } = req.body;
   if (!body?.trim()) return res.status(400).json({ error: 'Message cannot be empty' });
   const id = uuidv4();
   db.prepare('INSERT INTO messages (id, request_id, sender_id, body) VALUES (?, ?, ?, ?)')
-    .run(id, req.params.id, req.session.userId, body.trim());
+    .run(id, req.params.id, req.userId, body.trim());
   // Notify the other party
-  const sender = db.prepare('SELECT name FROM users WHERE id = ?').get(req.session.userId);
-  const otherId = request.requester_id === req.session.userId ? request.helper_id : request.requester_id;
+  const sender = db.prepare('SELECT name FROM users WHERE id = ?').get(req.userId);
+  const otherId = request.requester_id === req.userId ? request.helper_id : request.requester_id;
   if (otherId) notify(otherId, 'message', `New message from ${sender.name}`, body.trim().slice(0, 80), req.params.id);
-  res.json({ id, body: body.trim(), sender_id: req.session.userId, sender_name: sender.name, created_at: new Date().toISOString() });
+  res.json({ id, body: body.trim(), sender_id: req.userId, sender_name: sender.name, created_at: new Date().toISOString() });
 });
 
 app.post('/api/requests/:id/messages/image', requireAuth, upload.single('image'), (req, res) => {
   const request = db.prepare('SELECT * FROM requests WHERE id = ?').get(req.params.id);
   if (!request) return res.status(404).json({ error: 'Not found' });
-  const isInvolved = request.requester_id === req.session.userId || request.helper_id === req.session.userId;
+  const isInvolved = request.requester_id === req.userId || request.helper_id === req.userId;
   if (!isInvolved) return res.status(403).json({ error: 'Not involved' });
   if (!req.file) return res.status(400).json({ error: 'No image provided' });
   const imageUrl = `/uploads/${req.file.filename}`;
   const id = uuidv4();
   db.prepare('INSERT INTO messages (id, request_id, sender_id, body, image_url) VALUES (?, ?, ?, ?, ?)')
-    .run(id, req.params.id, req.session.userId, '', imageUrl);
-  const sender = db.prepare('SELECT name FROM users WHERE id = ?').get(req.session.userId);
-  const otherId = request.requester_id === req.session.userId ? request.helper_id : request.requester_id;
+    .run(id, req.params.id, req.userId, '', imageUrl);
+  const sender = db.prepare('SELECT name FROM users WHERE id = ?').get(req.userId);
+  const otherId = request.requester_id === req.userId ? request.helper_id : request.requester_id;
   if (otherId) notify(otherId, 'message', `Photo from ${sender.name}`, '📷 Sent a photo', req.params.id);
-  res.json({ id, image_url: imageUrl, sender_id: req.session.userId, sender_name: sender.name, created_at: new Date().toISOString() });
+  res.json({ id, image_url: imageUrl, sender_id: req.userId, sender_name: sender.name, created_at: new Date().toISOString() });
 });
 
 // ── Notifications ──────────────────────────────────────────────────────────
@@ -520,13 +555,13 @@ app.get('/api/notifications', requireAuth, (req, res) => {
   const notifs = db.prepare(`
     SELECT * FROM notifications WHERE user_id = ?
     ORDER BY created_at DESC LIMIT 30
-  `).all(req.session.userId);
-  const unread = db.prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND read = 0').get(req.session.userId);
+  `).all(req.userId);
+  const unread = db.prepare('SELECT COUNT(*) as c FROM notifications WHERE user_id = ? AND read = 0').get(req.userId);
   res.json({ notifications: notifs, unread: unread.c });
 });
 
 app.post('/api/notifications/read-all', requireAuth, (req, res) => {
-  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.session.userId);
+  db.prepare('UPDATE notifications SET read = 1 WHERE user_id = ?').run(req.userId);
   res.json({ ok: true });
 });
 
@@ -547,7 +582,7 @@ app.get('/api/conversations', requireAuth, (req, res) => {
     ) m ON m.request_id = r.id
     WHERE (r.requester_id = ? OR r.helper_id = ?)
     ORDER BY m.created_at DESC
-  `).all(req.session.userId, req.session.userId);
+  `).all(req.userId, req.userId);
   res.json(convos);
 });
 
@@ -564,13 +599,13 @@ app.get('/api/upcoming', requireAuth, (req, res) => {
       AND r.date >= ? AND r.date <= ?
       AND (r.requester_id = ? OR r.helper_id = ?)
     ORDER BY r.date ASC
-  `).all(today, inThreeDays, req.session.userId, req.session.userId);
+  `).all(today, inThreeDays, req.userId, req.userId);
   res.json(sits);
 });
 
 // ── Settings ───────────────────────────────────────────────────────────────
 app.get('/api/settings', requireAuth, (req, res) => {
-  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, bio, notif_messages, notif_accepted, notif_reminders, notif_browser, ec_name, ec_phone, ec_relation FROM users WHERE id = ?').get(req.session.userId);
+  const user = db.prepare('SELECT id, name, email, building, building_name, address, unit, bio, notif_messages, notif_accepted, notif_reminders, notif_browser, ec_name, ec_phone, ec_relation FROM users WHERE id = ?').get(req.userId);
   res.json(user);
 });
 
@@ -592,7 +627,7 @@ app.put('/api/settings', requireAuth, (req, res) => {
     notif_messages ? 1 : 0, notif_accepted ? 1 : 0,
     notif_reminders ? 1 : 0, notif_browser ? 1 : 0,
     ec_name || '', ec_phone || '', ec_relation || '',
-    req.session.userId
+    req.userId
   );
   res.json({ ok: true });
 });
@@ -639,5 +674,5 @@ app.post('/api/contact', async (req, res) => {
   }
 });
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`NekoPawz running at http://localhost:${PORT}`));

@@ -8,11 +8,13 @@ let myRequestsTab = 'posted';
 
 // ── API helper ─────────────────────────────────────────────────────────────
 async function api(method, path, body) {
-  const res = await fetch(path, {
+  const headers = body ? { 'Content-Type': 'application/json' } : {};
+  const fbUser = firebase.auth().currentUser;
+  if (fbUser) headers['Authorization'] = `Bearer ${await fbUser.getIdToken()}`;
+  const res = await fetch((window.API_BASE || '') + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers,
     body: body ? JSON.stringify(body) : undefined,
-    credentials: 'include'
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Request failed');
@@ -45,14 +47,20 @@ function navigate(page, param) {
 }
 
 // ── Auth ───────────────────────────────────────────────────────────────────
-async function checkAuth() {
-  try {
-    currentUser = await api('GET', '/api/me');
-    showApp();
-    navigate('dashboard');
-  } catch {
-    showLanding();
-  }
+function checkAuth() {
+  firebase.auth().onAuthStateChanged(async fbUser => {
+    if (fbUser) {
+      try {
+        currentUser = await api('GET', '/api/me');
+        showApp();
+        navigate('dashboard');
+      } catch {
+        showLanding();
+      }
+    } else {
+      showLanding();
+    }
+  });
 }
 
 function showApp() {
@@ -755,10 +763,10 @@ function openLoginModal() {
     e.preventDefault();
     const err = document.getElementById('login-error');
     try {
-      await api('POST', '/api/login', {
-        email: document.getElementById('l-email').value,
-        password: document.getElementById('l-password').value
-      });
+      await firebase.auth().signInWithEmailAndPassword(
+        document.getElementById('l-email').value,
+        document.getElementById('l-password').value
+      );
       currentUser = await api('GET', '/api/me');
       closeModal();
       showApp();
@@ -949,19 +957,28 @@ function openRegisterModal() {
     if (ageYears < 18) { err.textContent = 'You must be at least 18 years old to create an account.'; err.classList.remove('hidden'); return; }
     if (!document.getElementById('r-tos').checked) { err.textContent = 'You must agree to the Terms of Service.'; err.classList.remove('hidden'); return; }
     try {
-      await api('POST', '/api/register', {
-        name: document.getElementById('r-name').value,
-        email: document.getElementById('r-email').value,
-        password: document.getElementById('r-password').value,
-        building,
-        building_name: document.getElementById('r-building-name').value,
-        address,
-        unit: document.getElementById('r-unit').value,
-        bio: document.getElementById('r-bio').value,
-        lat: document.getElementById('r-lat').value || null,
-        lng: document.getElementById('r-lng').value || null,
-        dob
-      });
+      // Create Firebase account first, then register profile on backend
+      await firebase.auth().createUserWithEmailAndPassword(
+        document.getElementById('r-email').value,
+        document.getElementById('r-password').value
+      );
+      try {
+        await api('POST', '/api/register', {
+          name: document.getElementById('r-name').value,
+          building,
+          building_name: document.getElementById('r-building-name').value,
+          address,
+          unit: document.getElementById('r-unit').value,
+          bio: document.getElementById('r-bio').value,
+          lat: document.getElementById('r-lat').value || null,
+          lng: document.getElementById('r-lng').value || null,
+          dob
+        });
+      } catch (profileErr) {
+        // Backend profile creation failed — delete the Firebase account so the user can retry
+        await firebase.auth().currentUser?.delete();
+        throw profileErr;
+      }
       currentUser = await api('GET', '/api/me');
       closeModal();
       showApp();
@@ -1472,7 +1489,7 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 });
 
 document.getElementById('gear-logout-btn').addEventListener('click', async () => {
-  await api('POST', '/api/logout');
+  await firebase.auth().signOut();
   currentUser = null;
   closeGearMenu();
   showLanding();

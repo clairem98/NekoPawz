@@ -414,6 +414,27 @@
   </div>
 </div>
 
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+
+<!-- Firebase config — REPLACE these values with your Firebase project settings -->
+<!-- Get them from: Firebase Console → Project Settings → Your apps → Web app -->
+<script>
+  firebase.initializeApp({
+    apiKey:            "AIzaSyB5_IouGK67MfaxS46zYEZNTzd2UQg_6gE",
+    authDomain:        "nekopawz-5c367.firebaseapp.com",
+    projectId:         "nekopawz-5c367",
+    storageBucket:     "nekopawz-5c367.firebasestorage.app",
+    messagingSenderId: "13895845434",
+    appId:             "1:13895845434:web:b3b39c1b5d811374bb1703"
+  });
+
+  // API base URL — leave empty for local dev; set to your Railway URL for production
+  // e.g. window.API_BASE = 'https://nekopawz-server.up.railway.app';
+  window.API_BASE = '';
+</script>
+
 <script src="app.js"></script>
 </body>
 </html>

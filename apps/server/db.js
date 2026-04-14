@@ -114,6 +114,7 @@ for (const col of [
   "ec_name TEXT DEFAULT ''",
   "ec_phone TEXT DEFAULT ''",
   "ec_relation TEXT DEFAULT ''",
+  "firebase_uid TEXT DEFAULT NULL",
 ]) {
   try { db.exec(`ALTER TABLE users ADD COLUMN ${col}`); } catch {}
 }
