@@ -198,23 +198,29 @@ app.post('/api/avatar', requireAuth, upload.single('avatar'), async (req, res) =
 });
 
 app.get('/api/users/:id', requireAuth, async (req, res) => {
-  const user = await getUser(req.params.id);
-  if (!user) return res.status(404).json({ error: 'Not found' });
-  const [pets, reviewsSnap] = await Promise.all([
-    getUserPets(req.params.id),
-    db.collection('reviews').where('reviewee_id', '==', req.params.id).orderBy('created_at', 'desc').get(),
-  ]);
-  const reviews = await Promise.all(reviewsSnap.docs.map(async d => {
-    const rv = d.data();
-    const reviewer = await getUser(rv.reviewer_id);
-    // Always mask reviewer last names for all viewers
-    return { ...rv, reviewer_name: maskName(reviewer?.name || 'Unknown') };
-  }));
-  const avgRating = reviews.length
-    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
-  const { ec_name, ec_phone, ec_relation, dob, firebase_uid, email, address, ...safe } = user;
-  // Always mask last name — last names are never shown to other users
-  res.json({ ...safe, name: maskName(safe.name), pets, reviews, avgRating });
+  try {
+    const user = await getUser(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    const [pets, reviewsSnap] = await Promise.all([
+      getUserPets(req.params.id),
+      db.collection('reviews').where('reviewee_id', '==', req.params.id).get(),
+    ]);
+    let reviews = await Promise.all(reviewsSnap.docs.map(async d => {
+      const rv = d.data();
+      const reviewer = await getUser(rv.reviewer_id);
+      // Always mask reviewer last names for all viewers
+      return { ...rv, reviewer_name: maskName(reviewer?.name || 'Unknown') };
+    }));
+    reviews.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const avgRating = reviews.length
+      ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1) : null;
+    const { ec_name, ec_phone, ec_relation, dob, firebase_uid, email, address, ...safe } = user;
+    // Always mask last name — last names are never shown to other users
+    res.json({ ...safe, name: maskName(safe.name), pets, reviews, avgRating });
+  } catch (e) {
+    console.error('GET /api/users/:id error:', e);
+    res.status(500).json({ error: 'Failed to load user profile.' });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -305,6 +311,7 @@ app.post('/api/requests', requireAuth, async (req, res) => {
 });
 
 app.get('/api/requests', requireAuth, async (req, res) => {
+  try {
   const { status, mine, helping, radius } = req.query;
   const me = await getUser(req.userId);
   let snap;
@@ -312,18 +319,19 @@ app.get('/api/requests', requireAuth, async (req, res) => {
   if (mine === 'true') {
     let q = db.collection('requests').where('requester_id', '==', req.userId);
     if (status) q = q.where('status', '==', status);
-    snap = await q.orderBy('created_at', 'desc').get();
+    snap = await q.get();
   } else if (helping === 'true') {
     let q = db.collection('requests').where('helper_id', '==', req.userId);
     if (status) q = q.where('status', '==', status);
-    snap = await q.orderBy('created_at', 'desc').get();
+    snap = await q.get();
   } else {
     let q = db.collection('requests').where('status', '==', status || 'open');
     if (!radius || radius === 'building') q = q.where('building', '==', me.building);
-    snap = await q.orderBy('created_at', 'desc').get();
+    snap = await q.get();
   }
 
   let requests = snap.docs.map(d => d.data());
+  requests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   if (mine !== 'true' && helping !== 'true') {
     requests = requests.filter(r => r.requester_id !== req.userId);
@@ -353,6 +361,10 @@ app.get('/api/requests', requireAuth, async (req, res) => {
   }
 
   res.json(requests);
+  } catch (e) {
+    console.error('GET /api/requests error:', e);
+    res.status(500).json({ error: 'Failed to load requests.' });
+  }
 });
 
 app.get('/api/requests/:id', requireAuth, async (req, res) => {
@@ -560,16 +572,21 @@ app.post('/api/reviews', requireAuth, async (req, res) => {
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/activity', requireAuth, async (req, res) => {
-  const [fromSnap, toSnap] = await Promise.all([
-    db.collection('transactions').where('from_user_id', '==', req.userId).orderBy('created_at', 'desc').limit(20).get(),
-    db.collection('transactions').where('to_user_id', '==', req.userId).orderBy('created_at', 'desc').limit(20).get()
-  ]);
-  const seen = new Set();
-  const all = [...fromSnap.docs, ...toSnap.docs]
-    .map(d => d.data())
-    .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
-  all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  res.json(all.slice(0, 20));
+  try {
+    const [fromSnap, toSnap] = await Promise.all([
+      db.collection('transactions').where('from_user_id', '==', req.userId).get(),
+      db.collection('transactions').where('to_user_id', '==', req.userId).get()
+    ]);
+    const seen = new Set();
+    const all = [...fromSnap.docs, ...toSnap.docs]
+      .map(d => d.data())
+      .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
+    all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    res.json(all.slice(0, 20));
+  } catch (e) {
+    console.error('GET /api/activity error:', e);
+    res.status(500).json({ error: 'Failed to load activity.' });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -606,14 +623,21 @@ app.get('/api/neighbors', requireAuth, async (req, res) => {
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/requests/:id/messages', requireAuth, async (req, res) => {
-  const rdoc = await db.collection('requests').doc(req.params.id).get();
-  if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
-  const r = rdoc.data();
-  if (r.requester_id !== req.userId && r.helper_id !== req.userId)
-    return res.status(403).json({ error: 'Not involved' });
-  const snap = await db.collection('messages')
-    .where('request_id', '==', req.params.id).orderBy('created_at', 'asc').get();
-  res.json(snap.docs.map(d => d.data()));
+  try {
+    const rdoc = await db.collection('requests').doc(req.params.id).get();
+    if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
+    const r = rdoc.data();
+    if (r.requester_id !== req.userId && r.helper_id !== req.userId)
+      return res.status(403).json({ error: 'Not involved' });
+    const snap = await db.collection('messages')
+      .where('request_id', '==', req.params.id).get();
+    const msgs = snap.docs.map(d => d.data());
+    msgs.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+    res.json(msgs);
+  } catch (e) {
+    console.error('GET /api/messages error:', e);
+    res.status(500).json({ error: 'Failed to load messages.' });
+  }
 });
 
 app.post('/api/requests/:id/messages', requireAuth, async (req, res) => {
@@ -667,11 +691,18 @@ app.post('/api/requests/:id/messages/image', requireAuth, upload.single('image')
 // ════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/notifications', requireAuth, async (req, res) => {
-  const snap = await db.collection('notifications')
-    .where('user_id', '==', req.userId).orderBy('created_at', 'desc').limit(30).get();
-  const notifications = snap.docs.map(d => d.data());
-  const unread = notifications.filter(n => !n.read).length;
-  res.json({ notifications, unread });
+  try {
+    const snap = await db.collection('notifications')
+      .where('user_id', '==', req.userId).get();
+    let notifications = snap.docs.map(d => d.data());
+    notifications.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    notifications = notifications.slice(0, 30);
+    const unread = notifications.filter(n => !n.read).length;
+    res.json({ notifications, unread });
+  } catch (e) {
+    console.error('GET /api/notifications error:', e);
+    res.status(500).json({ error: 'Failed to load notifications.' });
+  }
 });
 
 app.post('/api/notifications/read-all', requireAuth, async (req, res) => {
@@ -702,18 +733,23 @@ app.get('/api/upcoming', requireAuth, async (req, res) => {
 });
 
 app.get('/api/conversations', requireAuth, async (req, res) => {
-  const [asReq, asHelp] = await Promise.all([
-    db.collection('requests').where('requester_id', '==', req.userId).orderBy('last_message_at', 'desc').get(),
-    db.collection('requests').where('helper_id',    '==', req.userId).orderBy('last_message_at', 'desc').get()
-  ]);
-  const seen = new Set();
-  const convos = [...asReq.docs, ...asHelp.docs]
-    .map(d => d.data())
-    .filter(r => r.last_message_at != null)
-    .filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
-    .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at))
-    .slice(0, 30);
-  res.json(convos);
+  try {
+    const [asReq, asHelp] = await Promise.all([
+      db.collection('requests').where('requester_id', '==', req.userId).get(),
+      db.collection('requests').where('helper_id',    '==', req.userId).get()
+    ]);
+    const seen = new Set();
+    const convos = [...asReq.docs, ...asHelp.docs]
+      .map(d => d.data())
+      .filter(r => r.last_message_at != null)
+      .filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
+      .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at))
+      .slice(0, 30);
+    res.json(convos);
+  } catch (e) {
+    console.error('GET /api/conversations error:', e);
+    res.status(500).json({ error: 'Failed to load conversations.' });
+  }
 });
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -779,6 +815,15 @@ app.post('/api/contact', async (req, res) => {
     console.error('Contact email error:', err.message);
     res.status(500).json({ error: 'Failed to send message. Please try again later.' });
   }
+});
+
+// ── Global error handler ─────────────────────────────────────────────────────
+// Catches any unhandled async errors thrown in route handlers and returns JSON
+// instead of a raw 500 HTML page, so the frontend can display a readable message.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('Unhandled route error:', err);
+  res.status(500).json({ error: err.message || 'An unexpected error occurred.' });
 });
 
 const PORT = process.env.PORT || 3000;
