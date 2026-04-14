@@ -381,7 +381,7 @@ async function loadDashboard() {
         <div class="empty-state">
           <div class="es-icon">🏘️</div>
           <h3>No open requests nearby</h3>
-          <p>Your neighbors haven't posted any requests yet. Be the first to help — or post your own request and see who volunteers.</p>
+          <p>No requests in your part of Austin yet. Be the first to help a neighbor — or post your own request and see who steps up.</p>
           <div class="es-actions">
             <button class="btn-primary" data-page="new-request">Post a request</button>
             <button class="btn-outline" data-page="neighbors">Meet your neighbors</button>
@@ -826,7 +826,7 @@ async function loadNeighbors() {
         <div class="empty-state">
           <div class="es-icon">🏘️</div>
           <h3>No neighbors yet</h3>
-          <p>You're one of the first NekoPawz members in your area! Share the link with neighbors to grow your community. The more neighbors join, the more help you can all give and receive.</p>
+          <p>You're one of the first NekoPawz members in your corner of Austin! Share the link with neighbors to grow your community. The more Austinites who join, the more help you can all give and receive.</p>
           <div class="es-actions">
             <button class="btn-primary" onclick="navigator.clipboard.writeText('https://www.nekopawz.com').then(()=>this.textContent='✓ Copied!').catch(()=>{})">Copy invite link</button>
           </div>
