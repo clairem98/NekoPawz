@@ -70,22 +70,44 @@ function navigate(page, param) {
 // Prevents onAuthStateChanged from interfering while a sign-in flow is active
 let authFlowActive = false;
 
+// Cache user profile in localStorage so returning users see the app instantly
+function cacheUser(user) {
+  try { localStorage.setItem('neko_user', JSON.stringify(user)); } catch {}
+}
+function getCachedUser() {
+  try { return JSON.parse(localStorage.getItem('neko_user')); } catch { return null; }
+}
+function clearCachedUser() {
+  try { localStorage.removeItem('neko_user'); } catch {}
+}
+
 function checkAuth() {
+  // If we have a cached user, show the app immediately — don't wait for the network
+  const cached = getCachedUser();
+  if (cached) {
+    currentUser = cached;
+    showApp();
+    navigate('dashboard');
+  }
+
   firebase.auth().onAuthStateChanged(async fbUser => {
-    // If a manual sign-in is already in progress, let it handle the UI
     if (authFlowActive) return;
     if (fbUser) {
       try {
-        currentUser = await api('GET', '/api/me');
-        showApp();
-        navigate('dashboard');
+        const fresh = await api('GET', '/api/me');
+        currentUser = fresh;
+        cacheUser(fresh);
+        // If we didn't already show the app from cache, show it now
+        if (!cached) { showApp(); navigate('dashboard'); }
+        else { updateNavCredits(); } // refresh credits/name in case they changed
       } catch (e) {
-        // Only drop to landing for genuine auth failures (401).
-        // For transient server/network errors, leave the user where they are.
-        if (!e.status || e.status === 401) showLanding();
+        if (!e.status || e.status === 401) { clearCachedUser(); showLanding(); }
+        // For transient errors leave the cached view visible — don't boot the user
       }
     } else {
-      showLanding();
+      clearCachedUser();
+      if (!cached) showLanding(); // already showing landing, nothing to do
+      else showLanding(); // was showing cached app but Firebase says no session
     }
   });
 }
@@ -645,7 +667,7 @@ async function uploadPetPhoto(petId, input) {
         }
       }
     }
-    currentUser = await api('GET', '/api/me');
+    currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
   } catch (e) { alert('Upload failed: ' + e.message); }
 }
 
@@ -953,7 +975,7 @@ async function cancelRequest(id) {
 }
 
 async function refreshUser() {
-  currentUser = await api('GET', '/api/me');
+  currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
   updateNavCredits();
   document.getElementById('credits-num').textContent = currentUser.credits;
 }
@@ -1039,7 +1061,7 @@ async function signInWithGoogle() {
   }
   // Check if this Google user already has a backend profile
   try {
-    currentUser = await api('GET', '/api/me');
+    currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
     authFlowActive = false;
     closeModal();
     showApp();
@@ -1111,7 +1133,7 @@ function openCompleteProfileModal(prefillName) {
         unit: document.getElementById('cp-unit').value,
         dob
       });
-      currentUser = await api('GET', '/api/me');
+      currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
       closeModal();
       showApp();
       navigate('dashboard');
@@ -1178,7 +1200,7 @@ function openLoginModal() {
         document.getElementById('l-email').value,
         document.getElementById('l-password').value
       );
-      currentUser = await api('GET', '/api/me');
+      currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
       authFlowActive = false;
       closeModal();
       showApp();
@@ -1399,7 +1421,7 @@ function openRegisterModal() {
         await firebase.auth().currentUser?.delete();
         throw profileErr;
       }
-      currentUser = await api('GET', '/api/me');
+      currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
       closeModal();
       showApp();
       navigate('dashboard');
@@ -1894,7 +1916,7 @@ async function uploadAvatar(input) {
     const res = await fetch((window.API_BASE || '') + '/api/avatar', { method: 'POST', headers, body: formData });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
-    currentUser = await api('GET', '/api/me');
+    currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
     const preview = document.getElementById('avatar-preview');
     if (preview) preview.innerHTML = avatarHtml(currentUser.name, currentUser.avatar_url, 'settings-avatar');
   } catch (e) { alert('Upload failed: ' + e.message); }
@@ -1914,7 +1936,7 @@ async function saveSettings() {
       ec_phone: document.getElementById('s-ec-phone')?.value ?? '',
       ec_relation: document.getElementById('s-ec-relation')?.value ?? '',
     });
-    currentUser = await api('GET', '/api/me');
+    currentUser = await api('GET', '/api/me'); cacheUser(currentUser);
     updateNavCredits();
     // Show brief confirmation
     const btn = event.target;
@@ -1950,6 +1972,7 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 document.getElementById('gear-logout-btn').addEventListener('click', async () => {
   await firebase.auth().signOut();
   currentUser = null;
+  clearCachedUser();
   closeGearMenu();
   showLanding();
 });
