@@ -219,6 +219,22 @@ app.delete('/api/pets/:id', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/pets/:id/photo', requireAuth, upload.single('photo'), async (req, res) => {
+  const doc = await db.collection('pets').doc(req.params.id).get();
+  if (!doc.exists || doc.data().owner_id !== req.userId)
+    return res.status(403).json({ error: 'Not allowed' });
+  if (!req.file) return res.status(400).json({ error: 'No image provided' });
+  try {
+    const result = await uploadToCloudinary(req.file.buffer, 'nekopawz/pets', {
+      transformation: [{ width: 400, height: 400, crop: 'fill', gravity: 'auto' }]
+    });
+    await db.collection('pets').doc(req.params.id).update({ photo_url: result.secure_url });
+    res.json({ ok: true, photo_url: result.secure_url });
+  } catch (e) {
+    res.status(500).json({ error: 'Upload failed: ' + e.message });
+  }
+});
+
 // ════════════════════════════════════════════════════════════════════════════
 // REQUESTS
 // ════════════════════════════════════════════════════════════════════════════

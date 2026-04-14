@@ -401,9 +401,16 @@ function renderPets(pets) {
     return;
   }
   list.innerHTML = pets.map(p => `
-    <div class="pet-item">
+    <div class="pet-item" id="pet-item-${p.id}">
+      <div class="pet-photo-wrap">
+        ${p.photo_url
+          ? `<img src="${p.photo_url}" class="pet-photo" alt="${p.name}" />`
+          : `<div class="pet-photo pet-photo-placeholder">${petEmoji(p.type)}</div>`}
+        <label class="pet-photo-upload-btn" title="Change photo" for="pet-photo-${p.id}">📷</label>
+        <input type="file" id="pet-photo-${p.id}" accept="image/jpeg,image/png,image/gif,image/webp"
+          style="display:none" onchange="uploadPetPhoto('${p.id}', this)" />
+      </div>
       <div class="pet-info">
-        <div class="pet-emoji">${petEmoji(p.type)}</div>
         <div>
           <div class="pet-name">${p.name}</div>
           <div class="pet-desc">${[p.type, p.breed, p.age ? p.age + ' yrs' : ''].filter(Boolean).join(' · ')}</div>
@@ -413,6 +420,32 @@ function renderPets(pets) {
       <button class="delete-btn" onclick="deletePet('${p.id}')">✕</button>
     </div>
   `).join('');
+}
+
+async function uploadPetPhoto(petId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { alert('Image must be under 4 MB'); input.value = ''; return; }
+  const formData = new FormData();
+  formData.append('photo', file);
+  const headers = {};
+  const fbUser = firebase.auth().currentUser;
+  if (fbUser) headers['Authorization'] = `Bearer ${await fbUser.getIdToken()}`;
+  try {
+    const res = await fetch((window.API_BASE || '') + `/api/pets/${petId}/photo`, { method: 'POST', headers, body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    // Update photo in-place without full re-render
+    const wrap = document.querySelector(`#pet-item-${petId} .pet-photo-wrap`);
+    if (wrap) {
+      const existing = wrap.querySelector('.pet-photo');
+      if (existing) {
+        existing.src = data.photo_url;
+        existing.classList.remove('pet-photo-placeholder');
+      }
+    }
+    currentUser = await api('GET', '/api/me');
+  } catch (e) { alert('Upload failed: ' + e.message); }
 }
 
 async function deletePet(id) {
@@ -718,10 +751,15 @@ async function loadUserProfile(id) {
         ${u.pets.map(p => `
           <div class="pet-item">
             <div class="pet-info">
-              <div class="pet-emoji">${petEmoji(p.type)}</div>
+              <div class="pet-photo-wrap pet-photo-wrap--readonly">
+                ${p.photo_url
+                  ? `<img src="${p.photo_url}" class="pet-photo" alt="${p.name}" />`
+                  : `<div class="pet-photo pet-photo-placeholder">${petEmoji(p.type)}</div>`}
+              </div>
               <div>
                 <div class="pet-name">${p.name}</div>
                 <div class="pet-desc">${[p.type, p.breed, p.age ? p.age + ' yrs' : ''].filter(Boolean).join(' · ')}</div>
+                ${p.notes ? `<div class="pet-desc">${p.notes}</div>` : ''}
               </div>
             </div>
           </div>`).join('')}
