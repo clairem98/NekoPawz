@@ -1514,7 +1514,9 @@ function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
   }
 
   // ── Nominatim — set up IMMEDIATELY (synchronous) ─────────────────────────
-  const suggestionsBox = document.getElementById('address-suggestions');
+  // Look up suggestions box near the input first, fall back to global ID
+  const suggestionsBox = input.closest('.form-row')?.querySelector('.address-suggestions')
+    || document.getElementById('address-suggestions');
   let debounceTimer;
 
   input.addEventListener('input', () => {
@@ -1549,7 +1551,7 @@ function setupAddressInput(inputId, latId, lngId, buildingId, statusId) {
       suggestionsBox.classList.add('hidden');
     });
     document.addEventListener('click', e => {
-      if (!e.target.closest('#' + inputId) && !e.target.closest('#address-suggestions'))
+      if (!e.target.closest('#' + inputId) && !e.target.closest('.address-suggestions'))
         suggestionsBox.classList.add('hidden');
     });
   }
@@ -1648,7 +1650,8 @@ function openRegisterModal() {
   `);
 
   // Address input — Google Places if available, Nominatim fallback
-  setupAddressInput('r-address', 'r-lat', 'r-lng', 'r-building', 'addr-confirm-status');
+  // Use setTimeout(0) so the modal DOM is fully painted before we attach autocomplete
+  setTimeout(() => setupAddressInput('r-address', 'r-lat', 'r-lng', 'r-building', 'addr-confirm-status'), 0);
 
   document.getElementById('google-register-btn').addEventListener('click', () => signInWithGoogle());
 
