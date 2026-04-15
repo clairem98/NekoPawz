@@ -537,7 +537,7 @@ app.post('/api/requests/:id/apply', requireAuth, async (req, res) => {
          <span style="color:#6b7c73;font-size:.9rem">📅 ${request.date || ''}${request.time_window ? ' · ' + request.time_window : ''}</span>
        </div>
        <p>Review their profile and approve or decline on NekoPawz.</p>
-       <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">View request →</a>`
+       <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">View volunteer →</a>`
     );
   }
 
