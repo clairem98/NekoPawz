@@ -493,6 +493,12 @@
             <h3>Request Status Breakdown</h3>
             <div class="activity-pills" id="activity-pills">Loading…</div>
           </div>
+          <div style="margin-top:24px;padding:18px 20px;background:var(--white);border:1px solid var(--border);border-radius:10px">
+            <h3 style="font-size:.9rem;font-weight:600;margin-bottom:8px;color:var(--green-dark)">🔧 Admin Tools</h3>
+            <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px">Send volunteer notification emails to requesters for all existing pending applications (one-time backfill).</p>
+            <button class="btn-action btn-save" id="backfill-btn" onclick="runBackfill()">Send backfill emails</button>
+            <span id="backfill-result" style="margin-left:12px;font-size:.82rem;color:var(--text-muted)"></span>
+          </div>
         </div>
 
         <!-- USERS TAB -->
@@ -1031,6 +1037,23 @@ async function sendComposeMessage() {
 document.getElementById('compose-overlay').addEventListener('click', e => {
   if (e.target === document.getElementById('compose-overlay')) closeComposeModal();
 });
+
+// ── BACKFILL ──────────────────────────────────────────────────────────────────
+async function runBackfill() {
+  const btn = document.getElementById('backfill-btn');
+  const result = document.getElementById('backfill-result');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  result.textContent = '';
+  try {
+    const data = await api('POST', '/api/admin/backfill-volunteer-emails');
+    result.textContent = `✓ Done — ${data.sent} email(s) sent, ${data.skipped} skipped.`;
+    result.style.color = 'var(--green-mid)';
+  } catch (e) {
+    result.textContent = 'Error: ' + e.message;
+    result.style.color = 'var(--danger)';
+  }
+  btn.disabled = false; btn.textContent = 'Send backfill emails';
+}
 
 // ── TRANSACTIONS ─────────────────────────────────────────────────────────────
 async function loadTransactions() {

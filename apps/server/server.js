@@ -1083,6 +1083,44 @@ app.get('/api/admin/transactions', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/admin/backfill-volunteer-emails — send emails to requesters for all existing pending applications
+app.post('/api/admin/backfill-volunteer-emails', requireAdmin, async (req, res) => {
+  try {
+    const appsSnap = await db.collection('applications').where('status', '==', 'pending').get();
+    let sent = 0, skipped = 0;
+    await Promise.all(appsSnap.docs.map(async doc => {
+      const app = doc.data();
+      try {
+        const [rdoc, applicant] = await Promise.all([
+          db.collection('requests').doc(app.request_id).get(),
+          getUser(app.applicant_id),
+        ]);
+        if (!rdoc.exists) { skipped++; return; }
+        const request = rdoc.data();
+        if (request.status !== 'open') { skipped++; return; } // already resolved
+        const requester = await getUser(request.requester_id);
+        if (!requester?.email || !applicant) { skipped++; return; }
+        const volunteerFirstName = applicant.name.split(' ')[0];
+        await emailUser(requester.email, requester.name,
+          `${volunteerFirstName} wants to help with "${request.title}"`,
+          `<h2 style="color:#1a3a2a;margin-top:0">Someone volunteered! 🙌</h2>
+           <p><strong>${applicant.name}</strong> has volunteered to help with your request:</p>
+           <div style="background:#f0faf4;border:1px solid #d8f3dc;border-radius:8px;padding:14px 18px;margin:16px 0">
+             <strong style="font-size:1rem">${request.title}</strong><br/>
+             <span style="color:#6b7c73;font-size:.9rem">📅 ${request.date || ''}${request.time_window ? ' · ' + request.time_window : ''}</span>
+           </div>
+           <p>Review their profile and approve or decline on NekoPawz.</p>
+           <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">View volunteer →</a>`
+        );
+        sent++;
+      } catch { skipped++; }
+    }));
+    res.json({ ok: true, sent, skipped });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Admin messaging ─────────────────────────────────────────────────────────
 
 // POST /api/admin/messages — send a message to a user
