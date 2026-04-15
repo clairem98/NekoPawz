@@ -216,16 +216,21 @@ document.getElementById('bell-btn').addEventListener('click', async () => {
     dropdown.classList.add('hidden');
     return;
   }
+
+  // Show dropdown immediately with a loading state so the click always feels responsive
+  const section = document.getElementById('support-messages-section');
+  Array.from(dropdown.childNodes).forEach(n => {
+    if (n !== section) n.parentNode && n.parentNode.removeChild(n);
+  });
+  const notifContainer = document.createElement('div');
+  notifContainer.innerHTML = '<div class="bell-empty">Loading…</div>';
+  dropdown.insertBefore(notifContainer, section);
+  dropdown.classList.remove('hidden');
+
   try {
     const { notifications } = await api('GET', '/api/notifications');
-    await api('POST', '/api/notifications/read-all');
-    // Rebuild the notification items area (leave support-messages-section intact)
-    const section = document.getElementById('support-messages-section');
-    // Remove existing notif items (everything before the support section)
-    Array.from(dropdown.childNodes).forEach(n => {
-      if (n !== section) n.parentNode && n.parentNode.removeChild(n);
-    });
-    const notifContainer = document.createElement('div');
+    api('POST', '/api/notifications/read-all').catch(() => {});
+
     if (!notifications.length) {
       notifContainer.innerHTML = '<div class="bell-empty">No notifications yet</div>';
     } else {
@@ -240,13 +245,12 @@ document.getElementById('bell-btn').addEventListener('click', async () => {
         </div>
       `).join('');
     }
-    dropdown.insertBefore(notifContainer, section);
     // Load support messages into the section
     await loadSupportMessages();
-    // Update badge (support messages not yet read are still unread at this point)
     await pollNotifications();
-    dropdown.classList.remove('hidden');
-  } catch {}
+  } catch (e) {
+    notifContainer.innerHTML = '<div class="bell-empty" style="color:var(--danger,#c0392b)">Could not load notifications</div>';
+  }
 });
 
 document.addEventListener('click', e => {
