@@ -30,6 +30,7 @@ async function waitForGoogleMaps() {
   catch { return false; }
 }
 let currentPage = 'landing';
+let prevPage = null;
 let browseTypeFilter = 'all';
 let browseDateFilter = 'all';
 let browseLocationFilter = '10'; // miles string like '0.5', '1', '5', '10'
@@ -75,6 +76,7 @@ function navigate(page, param) {
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   const el = document.getElementById(`page-${page}`);
   if (el) el.classList.remove('hidden');
+  prevPage = currentPage;
   currentPage = page;
   window.scrollTo(0, 0);
 
@@ -973,7 +975,7 @@ async function loadRequestDetail(id) {
     ` : '';
 
     el.innerHTML = `
-      <a href="#" onclick="history.back();return false" style="color:var(--text-muted);font-size:.9rem">← Back</a>
+      <a href="#" onclick="navigate(prevPage||'dashboard');return false" style="color:var(--text-muted);font-size:.9rem">← Back</a>
       ${ownerActions}
       <div id="edit-request-form-container" style="display:none"></div>
       <div id="request-detail-view">
@@ -1210,7 +1212,7 @@ async function loadUserProfile(id) {
       ? Array.from({length:5}, (_,i) => `<span class="star ${i < Math.round(u.avgRating) ? 'active' : ''}">★</span>`).join('')
       : '';
     el.innerHTML = `
-      <a href="#" onclick="history.back();return false" style="color:var(--text-muted);font-size:.9rem">← Back</a>
+      <a href="#" onclick="navigate(prevPage||'dashboard');return false" style="color:var(--text-muted);font-size:.9rem">← Back</a>
       <div class="profile-card" style="margin-top:16px">
         <div class="profile-avatar-wrap">
           ${avatarHtml(u.name, u.avatar_url, 'profile-avatar')}
