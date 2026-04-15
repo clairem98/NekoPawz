@@ -1162,6 +1162,24 @@ app.post('/api/admin/messages', requireAdmin, async (req, res) => {
       read: false,
     };
     await db.collection('support_messages').doc(id).set(message);
+
+    // In-app notification
+    notify(to_user_id, 'support', `Message from NekoPawz: ${subject}`, body.slice(0, 200));
+
+    // Email the user
+    const userEmail = userDoc.data().email;
+    if (userEmail) {
+      const firstName = (to_user_name || 'there').split(' ')[0];
+      emailUser(userEmail, to_user_name,
+        `NekoPawz Support: ${subject}`,
+        `<h2 style="color:#1a3a2a;margin-top:0">Message from NekoPawz Support</h2>
+         <p>Hi ${firstName},</p>
+         <div style="background:#f0faf4;border:1px solid #d8f3dc;border-radius:8px;padding:16px 20px;margin:16px 0;font-size:.95rem;line-height:1.6;white-space:pre-wrap;">${body.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
+         <p style="font-size:.85rem;color:#6b7c73">You can reply by visiting your NekoPawz account.</p>
+         <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:4px">Open NekoPawz →</a>`
+      );
+    }
+
     res.json({ ok: true, id });
   } catch (e) {
     res.status(500).json({ error: e.message });
