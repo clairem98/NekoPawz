@@ -253,10 +253,12 @@ app.get('/api/users/:id', requireAuth, async (req, res) => {
 // ════════════════════════════════════════════════════════════════════════════
 
 app.post('/api/pets', requireAuth, async (req, res) => {
-  const { name, type, breed, age, notes } = req.body;
+  const { name, type, breed, age, notes, gender, weight_lbs, friendly_dogs, friendly_cats, friendly_kids } = req.body;
   if (!name || !type) return res.status(400).json({ error: 'Name and type required' });
   const id = uuidv4();
-  const pet = { id, owner_id: req.userId, name, type, breed: breed || '', age: age || '', notes: notes || '' };
+  const pet = { id, owner_id: req.userId, name, type, breed: breed || '', age: age || '', notes: notes || '',
+    ...(type === 'dog' ? { gender: gender || '', weight_lbs: weight_lbs || '', friendly_dogs: friendly_dogs || '', friendly_cats: friendly_cats || '', friendly_kids: friendly_kids || '' } : {})
+  };
   await db.collection('pets').doc(id).set(pet);
   res.json(pet);
 });

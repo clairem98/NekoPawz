@@ -715,7 +715,13 @@ function renderPets(pets) {
       </div>
       <div class="pet-card-body">
         <div class="pet-card-name">${p.name}</div>
-        <div class="pet-card-desc">${[p.type, p.breed, p.age ? p.age + ' yrs' : ''].filter(Boolean).join(' · ')}</div>
+        <div class="pet-card-desc">${[p.type, p.gender||'', p.breed, p.age ? p.age + ' yrs' : '', p.weight_lbs ? p.weight_lbs + ' lbs' : ''].filter(Boolean).join(' · ')}</div>
+        ${p.type === 'dog' && (p.friendly_dogs || p.friendly_cats || p.friendly_kids) ? `
+          <div class="pet-card-notes" style="margin-top:4px">
+            ${p.friendly_dogs ? `🐕 other dogs: ${p.friendly_dogs}` : ''}
+            ${p.friendly_cats ? ` · 🐱 cats: ${p.friendly_cats}` : ''}
+            ${p.friendly_kids ? ` · 👶 kids: ${p.friendly_kids}` : ''}
+          </div>` : ''}
         ${p.notes ? `<div class="pet-card-notes">${p.notes}</div>` : ''}
       </div>
       <button class="pet-card-delete" onclick="deletePet('${p.id}')" title="Remove pet">✕</button>
@@ -1229,7 +1235,13 @@ async function loadUserProfile(id) {
               </div>
               <div>
                 <div class="pet-name">${p.name}</div>
-                <div class="pet-desc">${[p.type, p.breed, p.age ? p.age + ' yrs' : ''].filter(Boolean).join(' · ')}</div>
+                <div class="pet-desc">${[p.type, p.gender||'', p.breed, p.age ? p.age + ' yrs' : '', p.weight_lbs ? p.weight_lbs + ' lbs' : ''].filter(Boolean).join(' · ')}</div>
+                ${p.type === 'dog' && (p.friendly_dogs || p.friendly_cats || p.friendly_kids) ? `
+                  <div class="pet-desc">
+                    ${p.friendly_dogs ? `🐕 other dogs: ${p.friendly_dogs}` : ''}
+                    ${p.friendly_cats ? ` · 🐱 cats: ${p.friendly_cats}` : ''}
+                    ${p.friendly_kids ? ` · 👶 kids: ${p.friendly_kids}` : ''}
+                  </div>` : ''}
                 ${p.notes ? `<div class="pet-desc">${p.notes}</div>` : ''}
               </div>
             </div>
@@ -1742,6 +1754,37 @@ function openTosModal() {
   `);
 }
 
+function dogFieldsHtml() {
+  const opts = v => ['yes','no','unsure'].map(o => `<option value="${o}" ${v===o?'selected':''}>${o.charAt(0).toUpperCase()+o.slice(1)}</option>`).join('');
+  return `
+    <div id="dog-fields">
+      <div class="form-row">
+        <label>Gender <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <select id="p-gender">
+          <option value="">Unknown</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Weight <span style="font-weight:400;color:var(--text-muted)">(lbs, optional)</span></label>
+        <input type="number" id="p-weight" placeholder="e.g. 45" min="1" max="300" />
+      </div>
+      <div class="form-row">
+        <label>Friendly with other dogs?</label>
+        <select id="p-friendly-dogs"><option value="">(select)</option>${opts('')}</select>
+      </div>
+      <div class="form-row">
+        <label>Friendly with cats?</label>
+        <select id="p-friendly-cats"><option value="">(select)</option>${opts('')}</select>
+      </div>
+      <div class="form-row">
+        <label>Friendly with children?</label>
+        <select id="p-friendly-kids"><option value="">(select)</option>${opts('')}</select>
+      </div>
+    </div>`;
+}
+
 function openAddPetModal() {
   openModal(`
     <h2>Add a pet</h2>
@@ -1752,7 +1795,7 @@ function openAddPetModal() {
       </div>
       <div class="form-row">
         <label>Type</label>
-        <select id="p-type">
+        <select id="p-type" onchange="document.getElementById('dog-fields').style.display=this.value==='dog'?'':'none'">
           <option value="dog">Dog</option>
           <option value="cat">Cat</option>
           <option value="other">Other</option>
@@ -1766,9 +1809,10 @@ function openAddPetModal() {
         <label>Age <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
         <input type="text" id="p-age" placeholder="3" />
       </div>
+      ${dogFieldsHtml()}
       <div class="form-row">
         <label>Notes for helpers</label>
-        <textarea id="p-notes" rows="2" placeholder="Friendly, loves fetch, no small dogs…"></textarea>
+        <textarea id="p-notes" rows="2" placeholder="Loves fetch, needs a leash outside…"></textarea>
       </div>
       <div id="pet-error" class="error-msg hidden"></div>
       <button type="submit" class="btn-primary full-width">Add pet</button>
@@ -1777,13 +1821,21 @@ function openAddPetModal() {
   document.getElementById('pet-form').addEventListener('submit', async e => {
     e.preventDefault();
     const err = document.getElementById('pet-error');
+    const type = document.getElementById('p-type').value;
     try {
       await api('POST', '/api/pets', {
         name: document.getElementById('p-name').value,
-        type: document.getElementById('p-type').value,
+        type,
         breed: document.getElementById('p-breed').value,
         age: document.getElementById('p-age').value,
-        notes: document.getElementById('p-notes').value
+        notes: document.getElementById('p-notes').value,
+        ...(type === 'dog' ? {
+          gender: document.getElementById('p-gender').value || '',
+          weight_lbs: document.getElementById('p-weight').value || '',
+          friendly_dogs: document.getElementById('p-friendly-dogs').value || '',
+          friendly_cats: document.getElementById('p-friendly-cats').value || '',
+          friendly_kids: document.getElementById('p-friendly-kids').value || '',
+        } : {})
       });
       closeModal();
       loadProfile();
