@@ -387,12 +387,12 @@ app.get('/api/requests', requireAuth, async (req, res) => {
     if (me.lat && me.lng && r.req_lat && r.req_lng) {
       distanceMiles = haversineMiles(me.lat, me.lng, r.req_lat, r.req_lng);
       distanceLabel = formatDistance(distanceMiles);
-    } else if (r.requester_building === me.building) {
+    } else if (r.building && me.building && r.building === me.building) {
       distanceLabel = 'Same building';
     } else {
       distanceLabel = 'Nearby';
     }
-    return { ...r, petNames: r.pet_names, req_building: r.requester_building,
+    return { ...r, petNames: r.pet_names, req_building: r.building,
              distanceMiles, distanceLabel };
   });
 
@@ -402,7 +402,7 @@ app.get('/api/requests', requireAuth, async (req, res) => {
       if (r.distanceMiles != null) return r.distanceMiles <= radiusMiles;
       // No coordinates — include if same building key, or if the request has no coords at all
       // (keeps older requests visible rather than silently hiding them)
-      if (r.requester_building && me.building && r.requester_building === me.building) return true;
+      if (r.building && me.building && r.building === me.building) return true;
       // If no coords on either side, include within a generous fallback
       return !me.lat || !me.lng;
     });

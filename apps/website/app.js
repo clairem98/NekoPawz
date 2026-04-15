@@ -376,7 +376,7 @@ async function loadDashboard() {
 
   // Open requests nearby
   try {
-    const requests = await api('GET', '/api/requests?status=open');
+    const requests = await api('GET', '/api/requests?status=open&radius=10');
     const grid = document.getElementById('dashboard-requests');
     if (!requests.length) {
       grid.innerHTML = `
