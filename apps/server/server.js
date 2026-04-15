@@ -546,6 +546,23 @@ app.post('/api/requests/:id/apply', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.delete('/api/requests/:id/apply', requireAuth, async (req, res) => {
+  const rdoc = await db.collection('requests').doc(req.params.id).get();
+  if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
+  const request = rdoc.data();
+  if (request.status !== 'open') return res.status(400).json({ error: 'Request has already been accepted — you can no longer withdraw' });
+
+  const appSnap = await db.collection('applications')
+    .where('request_id', '==', req.params.id)
+    .where('applicant_id', '==', req.userId).limit(1).get();
+  if (appSnap.empty) return res.status(404).json({ error: 'No application found' });
+  const app = appSnap.docs[0].data();
+  if (app.status !== 'pending') return res.status(400).json({ error: 'Application is no longer pending' });
+
+  await appSnap.docs[0].ref.update({ status: 'withdrawn' });
+  res.json({ ok: true });
+});
+
 app.post('/api/requests/:id/approve/:applicantId', requireAuth, async (req, res) => {
   const rdoc = await db.collection('requests').doc(req.params.id).get();
   if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
@@ -555,9 +572,9 @@ app.post('/api/requests/:id/approve/:applicantId', requireAuth, async (req, res)
 
   const appSnap = await db.collection('applications')
     .where('request_id', '==', req.params.id)
-    .where('applicant_id', '==', req.params.applicantId)
-    .where('status', '==', 'pending').limit(1).get();
+    .where('applicant_id', '==', req.params.applicantId).limit(1).get();
   if (appSnap.empty) return res.status(404).json({ error: 'Application not found' });
+  if (appSnap.docs[0].data().status !== 'pending') return res.status(400).json({ error: 'Application is no longer pending' });
 
   const helper = await getUser(req.params.applicantId);
   await db.collection('requests').doc(req.params.id).update({ status: 'accepted', helper_id: req.params.applicantId, helper_name: helper?.name });

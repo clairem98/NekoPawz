@@ -903,7 +903,7 @@ async function loadRequestDetail(id) {
     let actions = '';
     if (r.status === 'open' && !isRequester) {
       if (r.myApplication === 'pending') {
-        actions += `<span class="apply-pending">Application sent — waiting for approval</span>`;
+        actions += `<span class="apply-pending">✓ Volunteer request sent</span><button class="btn-ghost btn-sm-inline" style="margin-left:10px" onclick="withdrawApplication('${r.id}')">Withdraw</button>`;
       } else if (r.myApplication === 'declined') {
         actions += `<span class="apply-declined">Your application was not selected for this request</span>`;
       } else if (!r.myApplication) {
@@ -927,8 +927,8 @@ async function loadRequestDetail(id) {
                 </div>
               </div>
               <div class="applicant-actions">
-                <button class="btn-primary btn-sm-inline" onclick="approveApplicant('${r.id}','${a.id}')">Approve</button>
-                <button class="btn-ghost btn-sm-inline" onclick="declineApplicant('${r.id}','${a.id}')">Decline</button>
+                <button class="btn-primary btn-sm-inline" onclick="approveApplicant('${r.id}','${a.applicant_id}')">Approve</button>
+                <button class="btn-ghost btn-sm-inline" onclick="declineApplicant('${r.id}','${a.applicant_id}')">Decline</button>
               </div>
             </div>`;
           }).join('')
@@ -1050,6 +1050,19 @@ async function applyRequest(id) {
   try {
     await api('POST', `/api/requests/${id}/apply`);
     loadRequestDetail(id);
+  } catch (e) { alert(e.message); }
+}
+
+async function withdrawApplication(id) {
+  if (!confirm('Withdraw your volunteer request for this job?')) return;
+  try {
+    await api('DELETE', `/api/requests/${id}/apply`);
+    // Refresh whichever view is active
+    if (currentPage === 'request-detail') {
+      loadRequestDetail(id);
+    } else {
+      loadBrowse();
+    }
   } catch (e) { alert(e.message); }
 }
 
@@ -1943,7 +1956,11 @@ function requestCard(r, showStatus = false, showVolunteer = false) {
         <div onclick="event.stopPropagation()" style="margin-top:12px">
           <button class="btn-primary" style="width:100%;padding:10px" onclick="applyRequest('${r.id}');this.textContent='✓ Volunteered!';this.disabled=true">🤝 Volunteer to help</button>
         </div>` : ''}
-      ${r.myApplication === 'pending' ? `<div style="margin-top:10px;font-size:.82rem;color:var(--green-mid);font-weight:600;text-align:center">✓ Volunteer request sent</div>` : ''}
+      ${r.myApplication === 'pending' ? `
+        <div onclick="event.stopPropagation()" style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <span style="font-size:.82rem;color:var(--green-mid);font-weight:600">✓ Volunteer request sent</span>
+          <button class="btn-ghost" style="padding:5px 12px;font-size:.8rem" onclick="withdrawApplication('${r.id}')">Withdraw</button>
+        </div>` : ''}
     </div>
   `;
 }
