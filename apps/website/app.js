@@ -1219,7 +1219,6 @@ async function loadUserProfile(id) {
         </div>
         <div class="profile-info">
           <h2>${u.name.split(' ')[0]}</h2>
-          <p>${u.building}</p>
           ${u.bio ? `<p style="margin-top:6px">${u.bio}</p>` : ''}
           ${u.avgRating ? `<div class="rating-row" style="margin-top:8px"><div class="stars">${starsHtml}</div><span>${u.avgRating} (${u.reviews.length} reviews)</span></div>` : ''}
           <button class="btn-primary" style="margin-top:16px" onclick="navigate('new-request','${u.id}')">Request ${u.name.split(' ')[0]}</button>
