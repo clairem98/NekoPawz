@@ -333,8 +333,20 @@ app.get('/api/requests', requireAuth, async (req, res) => {
     snap = await q.get();
   }
 
-  let requests = snap.docs.map(d => d.data());
+  let requests = snap.docs.map(d => ({ _ref: d.ref, ...d.data() }));
   requests.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  // Backfill req_lat/req_lng on old requests that are missing coordinates
+  await Promise.all(requests.filter(r => !r.req_lat || !r.req_lng).map(async r => {
+    try {
+      const u = await db.collection('users').doc(r.requester_id).get();
+      if (u.exists && u.data().lat && u.data().lng) {
+        await r._ref.update({ req_lat: u.data().lat, req_lng: u.data().lng });
+        r.req_lat = u.data().lat;
+        r.req_lng = u.data().lng;
+      }
+    } catch {}
+  }));
 
   if (mine !== 'true' && helping !== 'true') {
     requests = requests.filter(r => r.requester_id !== req.userId);
@@ -358,9 +370,15 @@ app.get('/api/requests', requireAuth, async (req, res) => {
   });
 
   if (radiusMiles != null) {
-    requests = requests.filter(r =>
-      r.distanceMiles == null ? r.requester_building === me.building : r.distanceMiles <= radiusMiles
-    );
+    requests = requests.filter(r => {
+      // If we have coordinates for both users, filter by distance
+      if (r.distanceMiles != null) return r.distanceMiles <= radiusMiles;
+      // No coordinates — include if same building key, or if the request has no coords at all
+      // (keeps older requests visible rather than silently hiding them)
+      if (r.requester_building && me.building && r.requester_building === me.building) return true;
+      // If no coords on either side, include within a generous fallback
+      return !me.lat || !me.lng;
+    });
   }
 
   // Attach requester ratings (batch fetch unique requesters)
