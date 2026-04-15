@@ -103,6 +103,31 @@ function formatDistance(miles) {
 }
 
 // ── Notification helper ──────────────────────────────────────────────────────
+// Fire-and-forget email to a user (requires SMTP_USER/SMTP_PASS env vars)
+async function emailUser(toEmail, toName, subject, htmlBody) {
+  if (!toEmail) return;
+  if (!process.env.SMTP_PASS || !process.env.SMTP_USER) return; // SMTP not configured
+  try {
+    await mailer.sendMail({
+      from: `"NekoPawz" <${process.env.SMTP_USER}>`,
+      to: toEmail,
+      subject,
+      html: `<div style="font-family:sans-serif;max-width:560px;color:#1a2820">
+        <div style="background:#1a3a2a;padding:20px 24px;border-radius:10px 10px 0 0">
+          <span style="font-size:1.3rem;font-weight:700;color:#fff">🐾 NekoPawz</span>
+        </div>
+        <div style="background:#fff;padding:24px;border:1px solid #e2e8e4;border-top:none;border-radius:0 0 10px 10px">
+          ${htmlBody}
+          <hr style="border:none;border-top:1px solid #e2e8e4;margin:20px 0"/>
+          <p style="font-size:.8rem;color:#6b7c73">You're receiving this because you have an account on NekoPawz. <a href="https://www.nekopawz.com" style="color:#40916c">nekopawz.com</a></p>
+        </div>
+      </div>`
+    });
+  } catch (e) {
+    console.error('emailUser error:', e.message);
+  }
+}
+
 function notify(userId, type, title, body, requestId = null) {
   const id = uuidv4();
   db.collection('notifications').doc(id).set({
@@ -498,6 +523,24 @@ app.post('/api/requests/:id/apply', requireAuth, async (req, res) => {
 
   notify(request.requester_id, 'application', 'Someone wants to help!',
     `${applicant.name} volunteered for "${request.title}". Review their profile and approve or decline.`, req.params.id);
+
+  // Email the requester
+  const requester = await getUser(request.requester_id);
+  if (requester?.email) {
+    const volunteerFirstName = applicant.name.split(' ')[0];
+    emailUser(requester.email, requester.name,
+      `${volunteerFirstName} wants to help with "${request.title}"`,
+      `<h2 style="color:#1a3a2a;margin-top:0">Someone volunteered! 🙌</h2>
+       <p><strong>${applicant.name}</strong> has volunteered to help with your request:</p>
+       <div style="background:#f0faf4;border:1px solid #d8f3dc;border-radius:8px;padding:14px 18px;margin:16px 0">
+         <strong style="font-size:1rem">${request.title}</strong><br/>
+         <span style="color:#6b7c73;font-size:.9rem">📅 ${request.date || ''}${request.time_window ? ' · ' + request.time_window : ''}</span>
+       </div>
+       <p>Review their profile and approve or decline on NekoPawz.</p>
+       <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">View request →</a>`
+    );
+  }
+
   res.json({ ok: true });
 });
 
