@@ -2093,7 +2093,6 @@ function setRecipient(id, name, building) {
       <div class="recipient-info">
         <div class="recipient-label">Sending directly to</div>
         <div class="recipient-name">${name}</div>
-        <div class="recipient-sub">${building || 'Neighbor'}</div>
       </div>
       <button type="button" class="recipient-remove" onclick="setRecipient(null)" title="Remove">✕</button>
     `;
