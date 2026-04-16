@@ -423,6 +423,9 @@ app.get('/api/requests', requireAuth, async (req, res) => {
     ...r,
     requester_avg_rating: ratingMap[r.requester_id]?.avg || null,
     requester_review_count: ratingMap[r.requester_id]?.count || 0,
+    // Mask last names — never expose other users' full names
+    requester_name: r.requester_id === req.userId ? r.requester_name : maskName(r.requester_name),
+    helper_name:    r.helper_id    === req.userId ? r.helper_name    : maskName(r.helper_name),
   }));
 
   res.json(requests);
@@ -466,7 +469,8 @@ app.get('/api/requests/:id', requireAuth, async (req, res) => {
       let distanceLabel = null;
       if (!sameBuilding && me.lat && me.lng && applicant?.lat && applicant?.lng)
         distanceLabel = formatDistance(haversineMiles(me.lat, me.lng, applicant.lat, applicant.lng));
-      return { ...app, name: applicant?.name || app.applicant_name,
+      const fullName = applicant?.name || app.applicant_name;
+      return { ...app, name: maskName(fullName),
                building: applicant?.building, lat: applicant?.lat, lng: applicant?.lng,
                avg_rating, review_count: revs.length, sameBuilding, distanceLabel };
     }));
@@ -480,12 +484,15 @@ app.get('/api/requests/:id', requireAuth, async (req, res) => {
   if (r.helper_id) {
     const helper = await getUser(r.helper_id);
     const helperRevs = (await db.collection('reviews').where('reviewee_id', '==', r.helper_id).get()).docs.map(d => d.data());
-    r.helper_name = helper?.name;
+    r.helper_name = r.helper_id === req.userId ? helper?.name : maskName(helper?.name);
     r.helper_avg_rating = helperRevs.length
       ? (helperRevs.reduce((s, rv) => s + rv.rating, 0) / helperRevs.length).toFixed(1) : null;
     r.helper_review_count = helperRevs.length;
   }
 
+  // Mask last names before sending
+  if (r.requester_id !== req.userId) r.requester_name = maskName(r.requester_name);
+  if (r.helper_id && r.helper_id !== req.userId && r.helper_name) r.helper_name = maskName(r.helper_name);
   res.json(r);
   } catch (e) {
     console.error('GET /api/requests/:id error:', e);
@@ -523,8 +530,9 @@ app.post('/api/requests/:id/apply', requireAuth, async (req, res) => {
     return res.json({ ok: true, autoApproved: true });
   }
 
+  const maskedApplicantName = maskName(applicant.name);
   notify(request.requester_id, 'application', 'Someone wants to help!',
-    `${applicant.name} volunteered for "${request.title}". Review their profile and approve or decline.`, req.params.id);
+    `${maskedApplicantName} volunteered for "${request.title}". Review their profile and approve or decline.`, req.params.id);
 
   // Email the requester
   const requester = await getUser(request.requester_id);
@@ -533,7 +541,7 @@ app.post('/api/requests/:id/apply', requireAuth, async (req, res) => {
     emailUser(requester.email, requester.name,
       `${volunteerFirstName} wants to help with "${request.title}"`,
       `<h2 style="color:#1a3a2a;margin-top:0">Someone volunteered! 🙌</h2>
-       <p><strong>${applicant.name}</strong> has volunteered to help with your request:</p>
+       <p><strong>${maskedApplicantName}</strong> has volunteered to help with your request:</p>
        <div style="background:#f0faf4;border:1px solid #d8f3dc;border-radius:8px;padding:14px 18px;margin:16px 0">
          <strong style="font-size:1rem">${request.title}</strong><br/>
          <span style="color:#6b7c73;font-size:.9rem">📅 ${request.date || ''}${request.time_window ? ' · ' + request.time_window : ''}</span>
@@ -718,7 +726,12 @@ app.get('/api/activity', requireAuth, async (req, res) => {
       .map(d => d.data())
       .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
     all.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    res.json(all.slice(0, 20));
+    // Mask last names — only the current user sees their own full name via /api/me
+    res.json(all.slice(0, 20).map(t => ({
+      ...t,
+      from_name: t.from_user_id === req.userId ? t.from_name : maskName(t.from_name),
+      to_name:   t.to_user_id   === req.userId ? t.to_name   : maskName(t.to_name),
+    })));
   } catch (e) {
     console.error('GET /api/activity error:', e);
     res.status(500).json({ error: 'Failed to load activity.' });
@@ -873,7 +886,12 @@ app.get('/api/upcoming', requireAuth, async (req, res) => {
     .map(d => d.data())
     .filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
     .filter(r => r.date >= today && r.date <= inThreeDays)
-    .sort((a, b) => a.date < b.date ? -1 : 1);
+    .sort((a, b) => a.date < b.date ? -1 : 1)
+    .map(r => ({
+      ...r,
+      requester_name: r.requester_id === req.userId ? r.requester_name : maskName(r.requester_name),
+      helper_name:    r.helper_id    === req.userId ? r.helper_name    : maskName(r.helper_name),
+    }));
   res.json(all);
 });
 
@@ -889,7 +907,12 @@ app.get('/api/conversations', requireAuth, async (req, res) => {
       .filter(r => r.last_message_at != null)
       .filter(r => { if (seen.has(r.id)) return false; seen.add(r.id); return true; })
       .sort((a, b) => new Date(b.last_message_at) - new Date(a.last_message_at))
-      .slice(0, 30);
+      .slice(0, 30)
+      .map(r => ({
+        ...r,
+        requester_name: r.requester_id === req.userId ? r.requester_name : maskName(r.requester_name),
+        helper_name:    r.helper_id    === req.userId ? r.helper_name    : maskName(r.helper_name),
+      }));
     res.json(convos);
   } catch (e) {
     console.error('GET /api/conversations error:', e);
