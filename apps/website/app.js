@@ -35,6 +35,8 @@ let browseTypeFilter = 'all';
 let browseDateFilter = 'all';
 let browseLocationFilter = '10'; // miles string like '0.5', '1', '5', '10'
 let myRequestsTab = 'posted';
+let chatPollInterval = null;
+let chatRequestId = null;
 
 // ── Avatar helper ──────────────────────────────────────────────────────────
 function avatarHtml(name, avatarUrl, cls = 'neighbor-avatar') {
@@ -44,6 +46,23 @@ function avatarHtml(name, avatarUrl, cls = 'neighbor-avatar') {
     return `<img src="${src}" class="${cls} ${cls}-img" alt="${name || ''}" />`;
   }
   return `<div class="${cls}">${name ? name[0].toUpperCase() : '?'}</div>`;
+}
+
+// ── Firebase error code → friendly message ──────────────────────────────────
+function friendlyAuthError(ex) {
+  const map = {
+    'auth/user-not-found':       'No account found with that email address.',
+    'auth/wrong-password':       'Incorrect password. Please try again.',
+    'auth/invalid-credential':   'Incorrect email or password. Please try again.',
+    'auth/email-already-in-use': 'An account with this email already exists.',
+    'auth/weak-password':        'Password must be at least 6 characters.',
+    'auth/invalid-email':        'Please enter a valid email address.',
+    'auth/too-many-requests':    'Too many attempts. Please wait a moment and try again.',
+    'auth/network-request-failed': 'Network error. Check your connection and try again.',
+    'auth/popup-closed-by-user': 'Sign-in window closed. Please try again.',
+  };
+  const code = ex?.code || '';
+  return map[code] || ex?.message || 'Something went wrong. Please try again.';
 }
 
 // ── API helper ─────────────────────────────────────────────────────────────
@@ -73,6 +92,10 @@ async function api(method, path, body) {
 
 // ── Router ─────────────────────────────────────────────────────────────────
 function navigate(page, param) {
+  // Always stop chat polling when leaving any page
+  clearInterval(chatPollInterval);
+  chatPollInterval = null;
+
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   const el = document.getElementById(`page-${page}`);
   if (el) el.classList.remove('hidden');
@@ -260,7 +283,8 @@ document.addEventListener('click', e => {
 });
 
 function notifIcon(type) {
-  return { message: '💬', accepted: '✅', completed: '🎉', reminder: '⏰' }[type] || '🔔';
+  return { message: '💬', accepted: '✅', completed: '🎉', reminder: '⏰',
+           declined: '❌', application: '🤝', support: '✉️' }[type] || '🔔';
 }
 
 function timeAgo(ts) {
@@ -1452,7 +1476,7 @@ function openLoginModal() {
       navigate('dashboard');
     } catch (ex) {
       authFlowActive = false;
-      err.textContent = ex.message;
+      err.textContent = friendlyAuthError(ex);
       err.classList.remove('hidden');
     }
   });
@@ -1733,7 +1757,7 @@ function openRegisterModal() {
       showApp();
       navigate('dashboard');
     } catch (ex) {
-      err.textContent = ex.message;
+      err.textContent = friendlyAuthError(ex);
       err.classList.remove('hidden');
     }
   });
@@ -2029,8 +2053,6 @@ function toggleNeighborPicker() {
 }
 
 // ── Chat ───────────────────────────────────────────────────────────────────
-let chatPollInterval = null;
-let chatRequestId = null;
 
 async function loadChat(requestId) {
   chatRequestId = requestId;

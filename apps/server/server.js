@@ -614,12 +614,15 @@ app.post('/api/requests/:id/complete', requireAuth, async (req, res) => {
   if (request.status !== 'accepted') return res.status(400).json({ error: 'Request not accepted yet' });
 
   await db.runTransaction(async t => {
+    const requestRef  = db.collection('requests').doc(req.params.id);
     const requesterRef = db.collection('users').doc(request.requester_id);
     const helperRef    = db.collection('users').doc(request.helper_id);
-    const [rDoc, hDoc] = await Promise.all([t.get(requesterRef), t.get(helperRef)]);
+    const [reqDoc, rDoc, hDoc] = await Promise.all([t.get(requestRef), t.get(requesterRef), t.get(helperRef)]);
+    // Guard against double-completion inside the transaction
+    if (reqDoc.data().status === 'completed') throw new Error('Already completed');
     t.update(requesterRef, { credits: rDoc.data().credits - request.credits });
     t.update(helperRef,    { credits: hDoc.data().credits + request.credits });
-    t.update(db.collection('requests').doc(req.params.id), { status: 'completed' });
+    t.update(requestRef, { status: 'completed' });
     const txId = uuidv4();
     t.set(db.collection('transactions').doc(txId), {
       id: txId,
@@ -737,7 +740,12 @@ app.get('/api/neighbors', requireAuth, async (req, res) => {
     let distanceMiles = null;
     if (me.lat && me.lng && n.lat && n.lng)
       distanceMiles = haversineMiles(me.lat, me.lng, n.lat, n.lng);
-    if (!sameBuilding && (distanceMiles === null || distanceMiles > 1)) continue;
+    // If the viewer has no coords, fall back to building match only
+    // If the viewer has coords but the neighbor doesn't, include them anyway (can't filter)
+    if (!sameBuilding) {
+      if (distanceMiles !== null && distanceMiles > 1) continue; // too far
+      if (distanceMiles === null && me.lat && me.lng && n.lat && n.lng) continue; // shouldn't happen
+    }
     const pets = await getUserPets(n.id);
     const pets_summary = pets.map(p => `${p.name} (${p.type})`).join(', ');
     const revSnap = await db.collection('reviews').where('reviewee_id', '==', n.id).get();
@@ -941,7 +949,7 @@ app.post('/api/contact', async (req, res) => {
     await mailer.sendMail({
       from: `"NekoPawz Contact" <${process.env.SMTP_USER}>`,
       to: CONTACT_EMAIL, replyTo: email,
-      subject: `[NekoPawz] ${subject || 'New message from ' + name}`,
+      subject: `[NekoPawz] ${(subject || 'New message from ' + name).replace(/[\r\n]/g, ' ')}`,
       text: `Name: ${name}\nEmail: ${email}\n\n${message}`,
       html: `<div style="font-family:sans-serif;max-width:560px">
         <h2 style="color:#1a4731">NekoPawz — Contact Form</h2>
@@ -977,8 +985,8 @@ async function requireAdmin(req, res, next) {
   try {
     const decoded = await admin.auth().verifyIdToken(auth.slice(7));
     const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
-    console.log(`[admin] login attempt: ${decoded.email} | configured: [${adminEmails.join(', ')}]`);
     if (!decoded.email || !adminEmails.includes(decoded.email.toLowerCase())) {
+      console.log(`[admin] access denied for: ${decoded.email || 'unknown'}`);
       return res.status(403).json({ error: `Access denied — ${decoded.email || 'unknown'} is not in ADMIN_EMAILS` });
     }
     req.adminEmail = decoded.email;
