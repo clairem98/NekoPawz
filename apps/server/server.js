@@ -189,7 +189,7 @@ app.post('/api/register', async (req, res) => {
   await db.collection('users').doc(id).set({
     id, name, email: decoded.email || '', firebase_uid: decoded.uid,
     building, building_name: building_name || '', address, unit: unit || '',
-    bio: bio || '', credits: 1, avatar_url: null,
+    bio: bio || '', credits: 3, avatar_url: null, phone: '',
     lat: lat != null && lat !== '' ? parseFloat(lat) : null,
     lng: lng != null && lng !== '' ? parseFloat(lng) : null,
     dob,
@@ -643,19 +643,57 @@ app.post('/api/requests/:id/complete', requireAuth, async (req, res) => {
   });
 
   const requester = await getUser(request.requester_id);
+  const helper    = await getUser(request.helper_id);
   notify(request.helper_id, 'completed', 'Service completed!',
-    `${requester.name} marked "${request.title}" complete. ${request.credits} credit${request.credits !== 1 ? 's' : ''} added.`, req.params.id);
+    `${maskName(requester.name)} marked "${request.title}" complete. ${request.credits} credit${request.credits !== 1 ? 's' : ''} added.`, req.params.id);
   notify(request.requester_id, 'completed', 'Service complete — leave a review',
     `Your "${request.title}" is done! Leave a review for your helper.`, req.params.id);
+
+  // Email both parties prompting review / confirmation
+  if (requester?.email) {
+    emailUser(requester.email, requester.name,
+      `"${request.title}" is complete — leave a review`,
+      `<h2 style="color:#1a3a2a;margin-top:0">Service complete! 🎉</h2>
+       <p>Your request <strong>"${request.title}"</strong> has been marked complete.</p>
+       <p>How did it go? A quick review helps your helper build their reputation and keeps NekoPawz trustworthy for everyone.</p>
+       <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">Leave a review →</a>`
+    );
+  }
+  if (helper?.email) {
+    emailUser(helper.email, helper.name,
+      `${request.credits} credit${request.credits !== 1 ? 's' : ''} added — "${request.title}" complete`,
+      `<h2 style="color:#1a3a2a;margin-top:0">You've been paid! 🐾</h2>
+       <p><strong>${request.credits} credit${request.credits !== 1 ? 's' : ''}</strong> have been added to your NekoPawz balance for completing <strong>"${request.title}"</strong>.</p>
+       <a href="https://www.nekopawz.com" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-top:8px">View your balance →</a>`
+    );
+  }
   res.json({ ok: true });
 });
 
 app.post('/api/requests/:id/cancel', requireAuth, async (req, res) => {
   const rdoc = await db.collection('requests').doc(req.params.id).get();
   if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
-  if (rdoc.data().requester_id !== req.userId) return res.status(403).json({ error: 'Only requester can cancel' });
-  if (!['open', 'accepted'].includes(rdoc.data().status)) return res.status(400).json({ error: 'Cannot cancel' });
-  await db.collection('requests').doc(req.params.id).update({ status: 'cancelled' });
+  const r = rdoc.data();
+  const isRequester = r.requester_id === req.userId;
+  const isHelper    = r.helper_id    === req.userId;
+  if (!isRequester && !isHelper) return res.status(403).json({ error: 'Not involved in this request' });
+  if (isHelper    && r.status !== 'accepted')             return res.status(400).json({ error: 'Nothing to cancel' });
+  if (isRequester && !['open','accepted'].includes(r.status)) return res.status(400).json({ error: 'Cannot cancel' });
+
+  if (isHelper) {
+    // Helper backing out — reopen the request so the owner can find someone new
+    await db.collection('requests').doc(req.params.id).update({
+      status: 'open', helper_id: null, helper_name: null
+    });
+    notify(r.requester_id, 'cancelled', 'Your helper cancelled',
+      `Your helper for "${r.title}" is no longer available. Your request is back open for new volunteers.`, req.params.id);
+  } else {
+    await db.collection('requests').doc(req.params.id).update({ status: 'cancelled' });
+    if (r.helper_id) {
+      notify(r.helper_id, 'cancelled', 'Request cancelled',
+        `The "${r.title}" request you were helping with has been cancelled by the owner.`, req.params.id);
+    }
+  }
   res.json({ ok: true });
 });
 
@@ -931,13 +969,14 @@ app.get('/api/settings', requireAuth, async (req, res) => {
 });
 
 app.put('/api/settings', requireAuth, async (req, res) => {
-  const { name, bio, unit, notif_messages, notif_accepted,
+  const { name, bio, unit, phone, notif_messages, notif_accepted,
           notif_reminders, notif_browser, ec_name, ec_phone, ec_relation,
           address, building, lat, lng } = req.body;
   const updates = {};
-  if (name  !== undefined) updates.name = name;
-  if (bio   !== undefined) updates.bio  = bio;
-  if (unit  !== undefined) updates.unit = unit;
+  if (name  !== undefined) updates.name  = name;
+  if (bio   !== undefined) updates.bio   = bio;
+  if (unit  !== undefined) updates.unit  = unit;
+  if (phone !== undefined) updates.phone = phone || '';
   // Address update — only applied when the client sends confirmed geocoordinates
   if (address  !== undefined) updates.address  = address;
   if (building !== undefined) updates.building = building;
@@ -951,6 +990,54 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   updates.ec_phone    = ec_phone    || '';
   updates.ec_relation = ec_relation || '';
   await db.collection('users').doc(req.userId).update(updates);
+  res.json({ ok: true });
+});
+
+// GET /api/requests/:id/contact — reveal first name + phone of other party (accepted only)
+app.get('/api/requests/:id/contact', requireAuth, async (req, res) => {
+  const rdoc = await db.collection('requests').doc(req.params.id).get();
+  if (!rdoc.exists) return res.status(404).json({ error: 'Not found' });
+  const r = rdoc.data();
+  if (!['accepted','completed'].includes(r.status)) return res.status(400).json({ error: 'Request not accepted yet' });
+  const isRequester = r.requester_id === req.userId;
+  const isHelper    = r.helper_id    === req.userId;
+  if (!isRequester && !isHelper) return res.status(403).json({ error: 'Not involved' });
+  const otherId = isRequester ? r.helper_id : r.requester_id;
+  const other   = await getUser(otherId);
+  if (!other) return res.status(404).json({ error: 'User not found' });
+  res.json({ firstName: other.name.split(' ')[0], phone: other.phone || null });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// REPORTS
+// ════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/report', requireAuth, async (req, res) => {
+  const { reported_user_id, reason, details } = req.body;
+  if (!reported_user_id || !reason) return res.status(400).json({ error: 'reason is required' });
+  const id = uuidv4();
+  await db.collection('reports').doc(id).set({
+    id, reporter_id: req.userId, reported_user_id,
+    reason, details: details || '', status: 'pending',
+    created_at: new Date().toISOString()
+  });
+  // Email admin
+  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
+  if (adminEmails[0]) {
+    const reporter = await getUser(req.userId);
+    const reported = await getUser(reported_user_id);
+    emailUser(adminEmails[0], 'NekoPawz Admin',
+      `[Report] ${reason}`,
+      `<h2 style="color:#1a3a2a;margin-top:0">New User Report</h2>
+       <table style="border-collapse:collapse;width:100%;margin-bottom:16px">
+         <tr><td style="padding:4px 8px;color:#666;width:90px">Reporter</td><td style="padding:4px 8px"><strong>${reporter?.name}</strong> (${reporter?.email})</td></tr>
+         <tr><td style="padding:4px 8px;color:#666">Reported</td><td style="padding:4px 8px"><strong>${reported?.name}</strong> (${reported?.email})</td></tr>
+         <tr><td style="padding:4px 8px;color:#666">Reason</td><td style="padding:4px 8px">${reason}</td></tr>
+         ${details ? `<tr><td style="padding:4px 8px;color:#666">Details</td><td style="padding:4px 8px">${details}</td></tr>` : ''}
+       </table>
+       <a href="https://www.nekopawz.com/admin.html" style="display:inline-block;background:#2d6a4f;color:#fff;padding:10px 22px;border-radius:8px;text-decoration:none;font-weight:600">Review in admin panel →</a>`
+    );
+  }
   res.json({ ok: true });
 });
 

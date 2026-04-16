@@ -284,7 +284,7 @@ document.addEventListener('click', e => {
 
 function notifIcon(type) {
   return { message: '💬', accepted: '✅', completed: '🎉', reminder: '⏰',
-           declined: '❌', application: '🤝', support: '✉️' }[type] || '🔔';
+           declined: '❌', application: '🤝', support: '✉️', cancelled: '🚫' }[type] || '🔔';
 }
 
 function timeAgo(ts) {
@@ -319,8 +319,10 @@ async function loadDashboard() {
   document.getElementById('credits-num').textContent = currentUser.credits;
 
   // Activity
+  let dashActivity = [];
   try {
-    const activity = await api('GET', '/api/activity');
+    dashActivity = await api('GET', '/api/activity');
+    const activity = dashActivity;
     const list = document.getElementById('activity-list');
     if (!activity.length) {
       list.innerHTML = `
@@ -349,23 +351,48 @@ async function loadDashboard() {
   // Reminders + onboarding banner
   const remindersEl = document.getElementById('dashboard-reminders');
   if (remindersEl) {
+    let banners = [];
+
+    // Overdue accepted requests — prompt to mark complete
+    try {
+      const myReqs = await api('GET', '/api/requests?mine=true');
+      const today = new Date().toISOString().split('T')[0];
+      const overdue = myReqs.filter(r => r.status === 'accepted' && r.date && r.date < today);
+      overdue.forEach(r => {
+        banners.push(`<div class="reminder-item reminder-item--action" onclick="navigate('request-detail','${r.id}')">
+          ✅ <strong>"${r.title}"</strong> has passed — don't forget to mark it complete and leave a review!
+        </div>`);
+      });
+      const helpingOverdue = (await api('GET', '/api/requests?helping=true'))
+        .filter(r => r.status === 'accepted' && r.date && r.date < today);
+      helpingOverdue.forEach(r => {
+        banners.push(`<div class="reminder-item reminder-item--action" onclick="navigate('request-detail','${r.id}')">
+          ✅ <strong>"${r.title}"</strong> has passed — remind the owner to mark it complete so you get your credits!
+        </div>`);
+      });
+    } catch {}
+
     // Upcoming sits
     try {
       const upcoming = await api('GET', '/api/upcoming');
       if (upcoming.length && currentUser.notif_reminders !== 0) {
-        remindersEl.innerHTML = upcoming.map(r => {
+        upcoming.forEach(r => {
           const isHelper = r.helper_id === currentUser.id;
           const label = isHelper ? `You're helping with "${r.title}"` : `"${r.title}" is coming up`;
-          return `<div class="reminder-item" onclick="navigate('request-detail','${r.id}')">
+          banners.push(`<div class="reminder-item" onclick="navigate('request-detail','${r.id}')">
             ⏰ <strong>${label}</strong> — ${formatRequestDate(r.date)}${r.time_window ? ', ' + r.time_window : ''}
-          </div>`;
-        }).join('');
-        return; // Skip onboarding if there are real reminders
+          </div>`);
+        });
       }
     } catch {}
 
+    if (banners.length) {
+      remindersEl.innerHTML = banners.join('');
+      return;
+    }
+
     // Onboarding checklist for new users
-    const hasActivity   = currentUser.credits > 1;
+    const hasActivity   = dashActivity.length > 0;
     const hasPets       = currentUser.pets?.length > 0;
     const hasProfilePic = !!currentUser.avatar_url;
     if (!hasActivity && !hasPets && !hasProfilePic) {
@@ -977,7 +1004,10 @@ async function loadRequestDetail(id) {
       }
     }
     if (['open', 'accepted'].includes(r.status) && isRequester) {
-      actions += `<button class="btn-ghost" onclick="cancelRequest('${r.id}')">Cancel request</button>`;
+      actions += `<button class="btn-ghost" onclick="cancelRequest('${r.id}', false)">Cancel request</button>`;
+    }
+    if (r.status === 'accepted' && isHelper) {
+      actions += `<button class="btn-ghost" style="margin-top:8px" onclick="cancelRequest('${r.id}', true)">I can no longer help</button>`;
     }
 
     // Unit/address is only revealed once a visit is confirmed (accepted or beyond)
@@ -1118,11 +1148,14 @@ async function completeRequest(id) {
   } catch (e) { alert(e.message); }
 }
 
-async function cancelRequest(id) {
-  if (!confirm('Cancel this request?')) return;
+async function cancelRequest(id, isHelper = false) {
+  const msg = isHelper
+    ? "Let the owner know you can no longer help? Their request will be reopened for other volunteers."
+    : "Cancel this request? If a helper has been accepted, they'll be notified.";
+  if (!confirm(msg)) return;
   try {
     await api('POST', `/api/requests/${id}/cancel`);
-    loadRequestDetail(id);
+    navigate('my-requests');
   } catch (e) { alert(e.message); }
 }
 
@@ -1263,6 +1296,7 @@ async function loadUserProfile(id) {
           ${u.bio ? `<p style="margin-top:6px">${u.bio}</p>` : ''}
           ${u.avgRating ? `<div class="rating-row" style="margin-top:8px"><div class="stars">${starsHtml}</div><span>${u.avgRating} (${u.reviews.length} reviews)</span></div>` : ''}
           <button class="btn-primary" style="margin-top:16px" onclick="navigate('new-request','${u.id}')">Request ${u.name.split(' ')[0]}</button>
+          <button class="btn-ghost btn-sm" style="margin-top:8px;color:var(--text-muted);font-size:.8rem" onclick="openReportModal('${u.id}','${u.name.split(' ')[0]}')">Report user</button>
         </div>
       </div>
       ${u.pets.length ? `
@@ -1306,6 +1340,44 @@ async function loadUserProfile(id) {
   } catch (e) {
     document.getElementById('user-profile-content').innerHTML = `<p class="error-msg">${e.message}</p>`;
   }
+}
+
+function openReportModal(userId, firstName) {
+  openModal(`
+    <h2>Report ${firstName}</h2>
+    <p style="color:var(--text-muted);margin-bottom:16px;font-size:.9rem">Reports are reviewed by NekoPawz staff. Please only report genuine concerns.</p>
+    <div class="form-card" style="padding:0;border:none;box-shadow:none">
+      <div class="form-row">
+        <label>Reason</label>
+        <select id="report-reason">
+          <option value="">Select a reason…</option>
+          <option value="Inappropriate behavior">Inappropriate behavior</option>
+          <option value="No-show / abandoned job">No-show / abandoned job</option>
+          <option value="Fake profile">Fake profile</option>
+          <option value="Harassment">Harassment</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Additional details <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+        <textarea id="report-details" rows="3" placeholder="Describe what happened…"></textarea>
+      </div>
+      <div id="report-error" class="error-msg hidden"></div>
+      <button class="btn-primary full-width" onclick="submitReport('${userId}')">Submit report</button>
+    </div>
+  `);
+}
+
+async function submitReport(userId) {
+  const reason = document.getElementById('report-reason').value;
+  const details = document.getElementById('report-details').value;
+  const errEl = document.getElementById('report-error');
+  if (!reason) { errEl.textContent = 'Please select a reason.'; errEl.classList.remove('hidden'); return; }
+  try {
+    await api('POST', '/api/report', { reported_user_id: userId, reason, details });
+    closeModal();
+    alert('Report submitted. Thank you — our team will review it.');
+  } catch (e) { errEl.textContent = e.message; errEl.classList.remove('hidden'); }
 }
 
 // ── Modals ─────────────────────────────────────────────────────────────────
@@ -2061,6 +2133,21 @@ async function loadChat(requestId) {
   await refreshChat(requestId);
   clearInterval(chatPollInterval);
   chatPollInterval = setInterval(() => refreshChat(requestId), 8000);
+
+  // Show other party's contact info (first name + phone if they've added one)
+  try {
+    const contact = await api('GET', `/api/requests/${requestId}/contact`);
+    let contactEl = document.getElementById('chat-contact-banner');
+    if (!contactEl) {
+      contactEl = document.createElement('div');
+      contactEl.id = 'chat-contact-banner';
+      contactEl.style.cssText = 'background:#f0faf4;border:1px solid #d8f3dc;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;color:var(--text)';
+      section.insertBefore(contactEl, section.querySelector('#chat-messages') || section.firstChild);
+    }
+    contactEl.innerHTML = contact.phone
+      ? `📱 <strong>${contact.firstName}</strong>'s phone: <a href="tel:${contact.phone}" style="color:var(--green-dark);font-weight:600">${contact.phone}</a> <span style="color:var(--text-muted)">(shared after acceptance)</span>`
+      : `👤 Chatting with <strong>${contact.firstName}</strong> — they haven't added a phone number yet.`;
+  } catch {}
 }
 
 async function refreshChat(requestId) {
@@ -2217,6 +2304,11 @@ async function loadSettings() {
             <label>Unit number</label>
             <input type="text" id="s-unit" value="${s.unit || ''}" placeholder="4B" />
           </div>
+          <div class="form-row">
+            <label>Phone number <span style="font-weight:400;color:var(--text-muted)">(optional)</span></label>
+            <p style="font-size:.78rem;color:var(--text-muted);margin:-4px 0 6px">Shared with your matched helper or requester after a job is accepted.</p>
+            <input type="tel" id="s-phone" value="${s.phone || ''}" placeholder="+1 (512) 000-0000" />
+          </div>
           <div class="form-row" style="position:relative">
             <label>Street address</label>
             <p style="font-size:.78rem;color:var(--text-muted);margin:-4px 0 6px">Select from the dropdown to confirm your location.</p>
@@ -2330,6 +2422,7 @@ async function saveSettings(event) {
       name: document.getElementById('s-name')?.value,
       bio: document.getElementById('s-bio')?.value,
       unit: document.getElementById('s-unit')?.value,
+      phone: document.getElementById('s-phone')?.value ?? '',
       notif_messages: document.getElementById('s-notif-messages')?.checked ? 1 : 0,
       notif_accepted: document.getElementById('s-notif-accepted')?.checked ? 1 : 0,
       notif_reminders: document.getElementById('s-notif-reminders')?.checked ? 1 : 0,
